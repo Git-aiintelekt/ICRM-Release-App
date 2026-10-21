@@ -28,19 +28,58 @@ It replaced `python-backend` (FastAPI, now retired). It uses the **same database
 
 Needs Python 3.14, Node.js 24 and the local MySQL server (`C:\Program Files\MySQL\MySQL Server 5.5`, already running as a Windows service).
 
+### First-time setup (after cloning)
+
 ```powershell
-cd E:\version-project\release_notes
+git clone https://github.com/Git-aiintelekt/ICRM-Release-App.git
+cd ICRM-Release-App
+```
 
-# once
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-copy .env.example .env                 # then fill in DB_PASSWORD, DJANGO_SECRET_KEY, APP_SECRET_KEY
-.venv\Scripts\python manage.py migrate # creates Django's own tables + ofbiz_package; existing tables untouched
-cd frontend; npm ci; npm run build; cd ..
+1. **Python environment and packages**
+   ```powershell
+   python -m venv .venv
+   .venv\Scripts\pip install -r requirements.txt
+   ```
+2. **Settings (`.env`)**: not in git, so create it from the template and fill in `DB_PASSWORD`,
+   `DJANGO_SECRET_KEY` and `APP_SECRET_KEY` (or copy an existing `.env` from a teammate's or an older checkout).
+   ```powershell
+   copy .env.example .env
+   mkdir media\release-images
+   ```
+   Screenshots are saved under `UPLOAD_DIR` (default `media\` in this folder).
+3. **Build the React frontend (required).** Django serves the UI from `frontend\dist`, which isn't in git.
+   Without it, http://localhost:8000 shows "The React app isn't built yet".
+   ```powershell
+   cd frontend
+   npm ci
+   npm run build
+   cd ..
+   ```
+4. **Check the setup.** It should print `System check identified no issues`.
+   ```powershell
+   .venv\Scripts\python manage.py check
+   ```
+5. **Database tables**: only on a new, empty database. `react_database` already has them.
+   ```powershell
+   .venv\Scripts\python manage.py migrate   # creates Django's own tables + ofbiz_package; existing tables untouched
+   ```
 
-# every time
+### Every time
+
+```powershell
 .venv\Scripts\python manage.py runserver 8000
 ```
+
+Open http://localhost:8000. Stop with `Ctrl+C`. If port 8000 is in use, run `runserver 8001`.
+
+### After `git pull`
+
+| What changed | Run |
+|---|---|
+| Files in `frontend\` | `cd frontend; npm run build; cd ..` (`npm ci` first if `package.json` changed) |
+| `requirements.txt` | `.venv\Scripts\pip install -r requirements.txt` |
+| New files in `*/migrations/` | `.venv\Scripts\python manage.py migrate` |
+| Only other Python files | Nothing, just restart the server |
 
 - React app: http://localhost:8000 (left sidebar: dashboard, release notes, Jira, Bitbucket, commits & PRs, audit logs,
   import/export, settings / integrations)

@@ -1,7 +1,8 @@
 """End-to-end check of every API endpoint against the real database, without keeping any change.
 
 Everything runs inside one transaction that is rolled back at the end; screenshot files written during
-the run are deleted. Run:  .venv\\Scripts\\python manage.py shell < scripts\\smoke_api.py
+the run are deleted. Run:
+    .venv\\Scripts\\python manage.py shell -c "exec(open('scripts/smoke_api.py', encoding='utf-8').read())"
 """
 import base64
 from pathlib import Path
@@ -38,16 +39,18 @@ class Rollback(Exception):
 image_dir = Path(settings.IMAGE_DIR)
 files_before = set(image_dir.iterdir()) if image_dir.exists() else set()
 admin_user = AppUser.objects.get(username="admin")
-other_user = AppUser.objects.get(username="user@example.com")
 H = {"HTTP_HOST": "localhost"}
 admin = Client(**H, HTTP_AUTHORIZATION=f"Bearer {create_token(admin_user.id)}")
-plain = Client(**H, HTTP_AUTHORIZATION=f"Bearer {create_token(other_user.id)}")
 anon = Client(**H)
 J = "application/json"
 baseline = 0  # number of checks that existed before the integrations were added (set after them)
 
 try:
     with transaction.atomic():
+        # A plain (non-admin) user for the permission checks; removed by the rollback.
+        other_user = AppUser.objects.create_user("smoke.plain@example.com", "smoke-plain-1", email="smoke.plain@example.com")
+        plain = Client(**H, HTTP_AUTHORIZATION=f"Bearer {create_token(other_user.id)}")
+
         # ---- health + auth ----
         check("health", anon.get("/api/health"), 200)
         check("auth options", anon.get("/api/auth/options"), 200)
@@ -165,4 +168,4 @@ print(f"\n{sum(results[:baseline])}/{baseline} original checks passed")
 print(f"{sum(results[baseline:])}/{len(results) - baseline} integration access checks passed")
 print(f"{sum(results)}/{len(results)} checks passed")
 assert ReleaseVersion.objects.filter(version="0.0-smoke").count() == 0
-assert AppUser.objects.filter(email="smoke.test@example.com").count() == 0
+assert AppUser.objects.filter(email__in=["smoke.test@example.com", "smoke.plain@example.com"]).count() == 0

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/favicon.ico" sizes="16x16" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iCRM Release Notes</title>
+    <script>
+      // Apply the saved theme before first paint (same logic as src/lib/theme.js).
+      (function () {
+        try {
+          var t = JSON.parse(localStorage.getItem('icrm-theme') || 'null');
+          if (!t || !t.mode || t.mode === 'system') return;
+          var root = document.documentElement;
+          if (t.mode === 'custom' && /^#[0-9a-f]{6}$/i.test(t.color || '')) {
+            var n = parseInt(t.color.slice(1), 16);
+            var lin = function (c) { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+            var lum = 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+            root.dataset.theme = lum > 0.179 ? 'light' : 'dark';
+            root.dataset.custom = '';
+            root.style.setProperty('--custom-bg', t.color);
+          } else if (t.mode === 'light' || t.mode === 'dark') {
+            root.dataset.theme = t.mode;
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

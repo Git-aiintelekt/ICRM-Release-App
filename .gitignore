@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+backups/
+packages/
+staticfiles/
+media/
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ofbiz/
+# Any other local env file (keep .env.example, which has placeholders only)
+.env.*
+!.env.example
+sent_emails/

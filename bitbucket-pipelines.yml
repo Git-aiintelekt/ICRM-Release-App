@@ -1,0 +1,41 @@
+# Checks every push and pull request: Django tests (no database needed: they mock it), system checks,
+# and the React app's lint and build. Packaging and the smoke test need the real database, so they stay manual
+# (README: "Testing").
+image: python:3.14
+
+definitions:
+  caches:
+    npm-frontend: frontend/node_modules
+  steps:
+    - step: &backend
+        name: Django tests and checks
+        caches:
+          - pip
+        script:
+          - apt-get update && apt-get install -y --no-install-recommends default-libmysqlclient-dev build-essential pkg-config
+          - pip install -r requirements.txt
+          - export DJANGO_SETTINGS_MODULE=config.settings.dev DJANGO_SECRET_KEY=ci-only APP_SECRET_KEY=ci-only EMAIL_MODE=console
+          - python manage.py check
+          - python manage.py makemigrations --check --dry-run
+          - python manage.py test
+    - step: &frontend
+        name: React lint and build
+        image: node:24
+        caches:
+          - npm-frontend
+        script:
+          - cd frontend
+          - npm ci
+          - npx oxlint src
+          - npm run build
+
+pipelines:
+  default:
+    - parallel:
+        - step: *backend
+        - step: *frontend
+  pull-requests:
+    '**':
+      - parallel:
+          - step: *backend
+          - step: *frontend

@@ -1,0 +1,185 @@
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f7f8fa;
+  --surface: #ffffff;
+  --text: #4a5160;
+  --text-muted: #6b7280;
+  --text-h: #0f172a;
+  --border: #e4e7ec;
+  --border-strong: #cfd4dc;
+  --accent: #1d6ef5;
+  --accent-hover: #155bd0;
+  --accent-bg: rgba(29, 110, 245, 0.08);
+  --accent-contrast: #ffffff;
+  --code-bg: #f1f3f6;
+  --focus: 0 0 0 3px rgba(29, 110, 245, 0.28);
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06);
+
+  --new-fg: #0b7a4b;
+  --new-bg: #e5f6ee;
+  --improved-fg: #1d5fd1;
+  --improved-bg: #e8f0fe;
+  --fixed-fg: #a04a00;
+  --fixed-bg: #fdf0e3;
+  --security-fg: #b4233c;
+  --security-bg: #fdebee;
+  --danger-fg: #b4233c;
+  --danger-bg: #fdebee;
+  --success-fg: #0b7a4b;
+  --success-bg: #e5f6ee;
+  --warning-fg: #8a5a00;
+  --warning-bg: #fff6df;
+
+  --sans: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  --mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  --radius: 10px;
+  --header-h: 64px;
+
+  font: 16px/1.6 var(--sans);
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #0f1115;
+    --bg-subtle: #151820;
+    --surface: #161a22;
+    --text: #b6bdca;
+    --text-muted: #8b93a3;
+    --text-h: #f3f5f9;
+    --border: #262b36;
+    --border-strong: #353c4a;
+    --accent: #5b9bff;
+    --accent-hover: #7cafff;
+    --accent-bg: rgba(91, 155, 255, 0.12);
+    --accent-contrast: #0b1220;
+    --code-bg: #1d222c;
+    --focus: 0 0 0 3px rgba(91, 155, 255, 0.35);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+
+    --new-fg: #5fd49d;
+    --new-bg: rgba(95, 212, 157, 0.12);
+    --improved-fg: #8db8ff;
+    --improved-bg: rgba(141, 184, 255, 0.13);
+    --fixed-fg: #f5b36b;
+    --fixed-bg: rgba(245, 179, 107, 0.13);
+    --security-fg: #ff8fa3;
+    --security-bg: rgba(255, 143, 163, 0.13);
+    --danger-fg: #ff8fa3;
+    --danger-bg: rgba(255, 143, 163, 0.12);
+    --success-fg: #5fd49d;
+    --success-bg: rgba(95, 212, 157, 0.12);
+    --warning-fg: #f5c46b;
+    --warning-bg: rgba(245, 196, 107, 0.12);
+    color-scheme: dark;
+  }
+}
+
+/* Black theme chosen explicitly, whatever the system setting. */
+:root[data-theme='dark'] {
+  --bg: #0f1115;
+  --bg-subtle: #151820;
+  --surface: #161a22;
+  --text: #b6bdca;
+  --text-muted: #8b93a3;
+  --text-h: #f3f5f9;
+  --border: #262b36;
+  --border-strong: #353c4a;
+  --accent: #5b9bff;
+  --accent-hover: #7cafff;
+  --accent-bg: rgba(91, 155, 255, 0.12);
+  --accent-contrast: #0b1220;
+  --code-bg: #1d222c;
+  --focus: 0 0 0 3px rgba(91, 155, 255, 0.35);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  --new-fg: #5fd49d;
+  --new-bg: rgba(95, 212, 157, 0.12);
+  --improved-fg: #8db8ff;
+  --improved-bg: rgba(141, 184, 255, 0.13);
+  --fixed-fg: #f5b36b;
+  --fixed-bg: rgba(245, 179, 107, 0.13);
+  --security-fg: #ff8fa3;
+  --security-bg: rgba(255, 143, 163, 0.13);
+  --danger-fg: #ff8fa3;
+  --danger-bg: rgba(255, 143, 163, 0.12);
+  --success-fg: #5fd49d;
+  --success-bg: rgba(95, 212, 157, 0.12);
+  --warning-fg: #f5c46b;
+  --warning-bg: rgba(245, 196, 107, 0.12);
+  color-scheme: dark;
+}
+
+/* Custom background colour: data-theme picks light or dark text for contrast,
+   and the surfaces are mixed from the chosen colour. Must stay after the theme blocks. */
+:root[data-custom] {
+  --bg: var(--custom-bg);
+  --bg-subtle: color-mix(in srgb, var(--custom-bg) 93%, var(--text-h));
+  --surface: color-mix(in srgb, var(--custom-bg) 95%, var(--text-h));
+  --code-bg: color-mix(in srgb, var(--custom-bg) 87%, var(--text-h));
+  --border: color-mix(in srgb, var(--custom-bg) 82%, var(--text-h));
+  --border-strong: color-mix(in srgb, var(--custom-bg) 68%, var(--text-h));
+  --text: color-mix(in srgb, var(--text-h) 82%, var(--custom-bg));
+  --text-muted: color-mix(in srgb, var(--text-h) 66%, var(--custom-bg));
+}
+
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-padding-top: calc(var(--header-h) + 16px);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  min-width: 320px;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text-h);
+  line-height: 1.2;
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.875em;
+  background: var(--code-bg);
+  color: var(--text-h);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: 6px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

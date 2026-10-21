@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Load once (see README.md). Adds "Release Notes" to the iCRM app menu.
+     Full-access admins see it straight away. For everyone else, grant RELEASE_NOTES_VIEW to their
+     security groups in iCRM Admin. The page itself only needs an iCRM sign-in. -->
+<entity-engine-xml>
+    <SecurityPermission permissionId="RELEASE_NOTES_VIEW" description="Release Notes: see the menu entry" actionType="COMPONENT" securityResourceType="SCREEN"/>
+    <OfbizComponentAccess componentId="RELEASE_NOTES" componentName="release-notes" uiLabels="Release Notes" seqId="1020" description="Release Notes" requestUri="/release-notes/control/main" isHide="N" permissionId="RELEASE_NOTES_VIEW"/>
+</entity-engine-xml>

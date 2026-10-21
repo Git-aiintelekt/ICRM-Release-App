@@ -1,0 +1,5 @@
+Version,Release date,Status,Planned release,Category,Jira ID,Title,Description
+11.2,2026-11-15,Coming soon,November 2026,New,CT-401,Bulk edit for customer records,"Select several customers in the list and change owner, segment or status in one step."
+11.2,2026-11-15,Coming soon,November 2026,Improved,CT-405,Faster customer search,Search results load about twice as fast on large accounts.
+11.2,2026-11-15,Coming soon,November 2026,Fixed,CT-377,updateCustomerB returns E112 for valid input,The API now accepts customers whose phone number has an extension.
+11.2,2026-11-15,Coming soon,November 2026,Security,CT-410,Session timeout applies to API tokens,Idle API tokens now expire with the web session.

@@ -156,7 +156,7 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 60 * 1024 * 1024
 
 # ---- Files ----
 
-UPLOAD_DIR = Path(env("UPLOAD_DIR", BASE_DIR.parent / "python-backend" / "uploads"))
+UPLOAD_DIR = Path(env("UPLOAD_DIR", BASE_DIR / "media"))
 IMAGE_DIR = UPLOAD_DIR / "release-images"
 PACKAGE_DIR = Path(env("PACKAGE_DIR", BASE_DIR / "packages"))
 # "Back to iCRM" link in the packaged OFBiz viewer.

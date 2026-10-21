@@ -13,8 +13,8 @@ Django (run when editing)                      OFBiz (always running)
        │ Download → unzip into hot-deploy-ext/ ──────────┘
 ```
 
-It replaces `python-backend` (FastAPI). It uses the **same database, tables, users and passwords**, and serves the
-**same React UI**, so the old app can keep running while this one is verified.
+It replaced `python-backend` (FastAPI, now retired). It uses the **same database, tables, users and passwords**, and serves the
+**same React UI**.
 
 | | |
 |---|---|
@@ -363,11 +363,7 @@ Verified during the migration (2026-09-30), against the real data (6 versions, 4
   - the viewer passed 15/15 checks with Django stopped.
 - **Full workflow** (Admin → add 10.12 → Generate → Download → deploy → 10.12 shown as Latest): 14/14 checks passed. The test data was removed afterwards.
 
-## Retiring python-backend
+## python-backend (retired)
 
-Once you've checked this app yourself:
-1. Stop the FastAPI server. Run Django (and later waitress) on port 8000 instead.
-2. Move the screenshots: copy `python-backend\uploads\release-images\` to a folder of this project, and set `UPLOAD_DIR` in `.env`.
-3. Archive `python-backend\` and `my-react-app\`. `release_notes\frontend\` is now the React source.
-   The seed scripts (`build_release_seed.py`, `add_jira_issues_from_sql.py`, `make_sample_release_doc.py`) are still in
-   `python-backend\scripts\` if you need them.
+This app has replaced `python-backend` (FastAPI) and `my-react-app`. Both folders have been deleted.
+`frontend\` is the React source, and screenshots are stored in `media\release-images\` (`UPLOAD_DIR` in `.env`).

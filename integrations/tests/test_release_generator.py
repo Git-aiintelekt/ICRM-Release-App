@@ -98,3 +98,52 @@ class VersionsTests(IntegrationTestCase):
         self.assertEqual(self.call(api.release_draft, ADMIN, method="post", data={"version": "x;y"}).status_code, 400)
         self.assertEqual(self.call(api.release_versions, VIEWER).status_code, 403)
         self.assertEqual(self.call(api.release_draft, VIEWER, method="post", data={"version": "10.9.0"}).status_code, 403)
+
+
+class PublishedBranchTests(IntegrationTestCase):
+    """After publishing: the release branches limit the screens, commits are the version's own, the dashboard counts."""
+
+    def setUp(self):
+        super().setUp()
+        self.serve(FakeHttp())
+        self.repository_changes = (["icrm-b2b-master"], [])
+        mock.patch("integrations.release_generator._release_branches",
+                   side_effect=lambda client, slug: [b for b in map(g.parse_branch, BRANCHES.get(slug, [])) if b]).start()
+
+    def test_previous_version_branch_is_excluded_unless_also_shown(self):
+        client = mock.Mock()
+        self.assertEqual(g.previous_branches(client, "icrm-b2b-master", ["release/icrm_release_10_9_0_18122025"]),
+                         ["icrm_release_10_8_5_08102025"])
+        both = ["release/icrm_release_10_9_0_18122025", "icrm_release_10_8_5_08102025"]
+        self.assertEqual(g.previous_branches(client, "icrm-b2b-master", both), ["icrm_release_10_3_4_281024"])
+        self.assertEqual(g.previous_branches(client, "icrm-b2b-master", ["dev_release_18072023"]), [])
+
+    def test_link_adds_only_this_versions_release_branches(self):
+        objects = mock.patch("integrations.release_generator.IntegrationScope.objects").start()
+        objects.get_or_create.return_value = (mock.Mock(), True)
+        added = g.link_branches("10.9.0", [
+            {"repository": "icrm-b2b-master", "branch": "release/icrm_release_10_9_0_18122025"},
+            {"repository": "icrm-b2b-master", "branch": "release/icrm_release_10_8_5_08102025"},  # another version
+            {"repository": "icrm-b2b-master", "branch": "icrm_release_10_9_0_18122025"},          # not under release/
+            {"repository": "unknown-repo", "branch": "release/icrm_release_10_9_0_18122025"},
+        ], ADMIN)
+        self.assertEqual(added, ["icrm-b2b-master:release/icrm_release_10_9_0_18122025"])
+        objects.get_or_create.assert_called_once()
+
+    def test_dashboard_counts_the_published_releases_jira_issues(self):
+        from integrations import api
+        self.scope["branches"] = {"icrm-b2b-master": ["release/icrm_release_10_9_0_18122025", "feature/x"]}
+        mock.patch("integrations.release_generator.ReleaseVersion.objects.filter").start() \
+            .return_value.values_list.return_value = ["10.9.0"]
+        items = mock.patch("integrations.api.ReleaseItem.objects.filter").start()
+        items.return_value.exclude.return_value.exclude.return_value.values_list.return_value = ["CS-1", "CS-2", "cs-3"]
+        client = mock.Mock()
+        client.issue_statuses.return_value = {
+            "CS-1": {"statusCategory": "done", "issueType": "Bug"},
+            "CS-2": {"statusCategory": "indeterminate", "issueType": "Bug"},
+        }
+        rows = api._release_branch_counts(client, self.scope)
+        self.assertEqual(rows, [{"version": "10.9.0",
+                                 "branches": [{"repository": "icrm-b2b-master",
+                                               "branch": "release/icrm_release_10_9_0_18122025"}],
+                                 "counts": {"total": 3, "done": 1, "open": 1, "notFound": 1, "bugs": 2, "openBugs": 1}}])

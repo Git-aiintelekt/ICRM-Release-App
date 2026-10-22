@@ -24,7 +24,7 @@ from audit import models as audit
 from audit.service import record
 from config.api import IsAdmin
 from jira.api import JiraAccess
-from releases.models import ReleaseVersion
+from releases.models import ReleaseItem, ReleaseVersion
 
 from . import bitbucket_client, cache, credentials, jira_client, release_generator, scope
 from .bitbucket_client import BRANCH_RE, SLUG_RE, BitbucketClient
@@ -261,7 +261,10 @@ def bitbucket_branches(request, slug):
 @permission_classes([JiraAccess])
 @service_errors
 def bitbucket_commits(request, slug):
-    data = BitbucketClient().commits(slug, branches=_branches(request, slug, scope.current()), **_paging(request))
+    client = BitbucketClient()
+    branches = _branches(request, slug, scope.current())
+    data = client.commits(slug, branches=branches, exclude=release_generator.previous_branches(client, slug, branches),
+                          **_paging(request))
     values, warning = with_jira_status([dict(c) for c in data["values"]])
     return Response({**data, "values": values, "jiraWarning": warning})
 
@@ -286,6 +289,24 @@ def _section(fn):
         return {"data": None, "error": str(exc)}
 
 
+def _release_branch_counts(client, sc) -> list[dict]:
+    """Per published release from a release/ branch in the scope: its Jira issues (the published items' Jira IDs) with
+    their live status. Newest version first."""
+    rows = []
+    for entry in release_generator.published_branches(sc["branches"]):
+        keys = sorted({k.upper() for k in ReleaseItem.objects.filter(release_version__version=entry["version"])
+                       .exclude(jira_id__isnull=True).exclude(jira_id="").values_list("jira_id", flat=True)})
+        issues = client.issue_statuses(keys)
+        done = [k for k in keys if issues.get(k, {}).get("statusCategory") == "done"]
+        bugs = [k for k in keys if (issues.get(k, {}).get("issueType") or "") in settings.JIRA_BUG_ISSUE_TYPES]
+        rows.append({**entry, "counts": {
+            "total": len(keys), "done": len(done), "open": len([k for k in keys if k in issues and k not in done]),
+            "notFound": len([k for k in keys if k not in issues]), "bugs": len(bugs),
+            "openBugs": len([k for k in bugs if k not in done])}})
+    rows.sort(key=lambda r: tuple(int(p) for p in r["version"].split(".")), reverse=True)
+    return rows
+
+
 @api_view(["GET"])
 @permission_classes([JiraAccess])
 def dashboard(request):
@@ -295,8 +316,10 @@ def dashboard(request):
         client = JiraClient()
         body["jiraSummary"] = _section(lambda: client.summary(sc["fixVersions"]))
         body["releases"] = _section(lambda: client.release_summaries(_app_versions(), only=sc["fixVersions"]))
+        body["releaseBranches"] = _section(lambda: _release_branch_counts(client, sc))
     else:
-        body["jiraSummary"] = body["releases"] = {"data": None, "error": None, "notConfigured": True}
+        body["jiraSummary"] = body["releases"] = body["releaseBranches"] = {"data": None, "error": None,
+                                                                            "notConfigured": True}
 
     if bitbucket_client.is_configured():
         bb = BitbucketClient()
@@ -305,7 +328,9 @@ def dashboard(request):
         branches = sc["branches"].get(repo, [])
 
         def recent_commits():
-            items, warning = with_jira_status([dict(c) for c in bb.commits(repo, branches=branches, limit=10)["values"]])
+            exclude = release_generator.previous_branches(bb, repo, branches)
+            commits = bb.commits(repo, branches=branches, exclude=exclude, limit=10)["values"]
+            items, warning = with_jira_status([dict(c) for c in commits])
             return {"values": items, "jiraWarning": warning}
 
         def recent_prs():

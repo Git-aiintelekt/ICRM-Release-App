@@ -22,6 +22,7 @@ from audit import models as audit
 from audit.service import record
 from config.api import CamelCaseJSONParser, IsAdmin, NotFound, bad_request, not_found
 from config.mail import delivery_mode
+from integrations import release_generator
 
 from .models import CATEGORY_ORDER, Category, ReleaseImage, ReleaseItem, ReleaseUpload, ReleaseVersion, Status
 from .services import image_store, release_email
@@ -144,6 +145,11 @@ class ParsedItemSerializer(serializers.Serializer):
     images = ParsedImageSerializer(many=True, required=False, default=list, max_length=MAX_IMAGES)
 
 
+class SourceBranchSerializer(serializers.Serializer):
+    repository = serializers.CharField(max_length=100)
+    branch = serializers.CharField(max_length=200)
+
+
 class PublishSerializer(serializers.Serializer):
     """Required: version and at least one change. Everything else is optional."""
 
@@ -159,6 +165,8 @@ class PublishSerializer(serializers.Serializer):
     images = ParsedImageSerializer(many=True, required=False, default=list, max_length=MAX_IMAGES)
     mark_latest = serializers.BooleanField(default=True)
     items = ParsedItemSerializer(many=True, min_length=1)
+    # Drafted from Bitbucket: the version's release branches, which the integration screens are then limited to.
+    branches = SourceBranchSerializer(many=True, required=False, default=list, max_length=20)
 
 
 @api_view(["POST"])
@@ -250,6 +258,10 @@ def publish(request):
                                          item_count=len(body["items"]), mode="new", uploaded_by=request.user)
             record(request, audit.RELEASE_PUBLISH, request.user, target=str(release),
                    details=f"new {len(body['items'])} items, {image_count} screenshots from {body['file_name']}")
+            linked = release_generator.link_branches(release.version, body["branches"], request.user)
+            if linked:
+                record(request, audit.INTEGRATION_SCOPE, request.user, target=str(release),
+                       details="added release branches " + ", ".join(linked))
     except IntegrityError:  # the same version was uploaded at the same moment
         for file_name in saved_files:
             image_store.delete(file_name)
@@ -326,6 +338,10 @@ def _delete_release(request, release):
     with transaction.atomic():
         count = release.images.count()
         record(request, audit.RELEASE_DELETE, request.user, target=str(release), details=f"deleted with {count} screenshots")
+        unlinked = release_generator.unlink_version(release.version)
+        if unlinked:
+            record(request, audit.INTEGRATION_SCOPE, request.user, target=str(release),
+                   details="removed release branches " + ", ".join(unlinked))
         release.delete()  # items, screenshots (and their files) and upload history go with it
     return Response(status=status.HTTP_204_NO_CONTENT)
 

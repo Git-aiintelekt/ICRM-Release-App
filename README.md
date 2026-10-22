@@ -234,6 +234,12 @@ contains them. Without credentials each page says which settings are missing, an
   `security` → Security; other types by their wording, as for uploads). The draft opens in the upload review, with
   warnings for issues Jira doesn't show and issues not done yet, and is saved only when published
   (`integrations/release_generator.py`).
+- **After publishing a drafted version:** its `release/` branches are added to the scope (below), so the Bitbucket
+  page lists only the published release branches, and Commits & Pull Requests and the Dashboard show only theirs. A
+  release branch's commits are that version's own (not on the previous version's branch; with two versions shown,
+  everything since the older one's predecessor). The Dashboard's **Published release branches** table counts each
+  release's Jira issues (its published Jira IDs) with their live status: done, open, bugs, open bugs. Deleting the
+  release takes its branches out of the scope again. Both are audited as `INTEGRATION_SCOPE`.
 - **Caching:** answers are kept in memory for `INTEGRATION_CACHE_SECONDS` (default 300); the dashboard is one request.
   Nothing from Jira or Bitbucket is copied into the database. The tables are `integration_scope` (the scope above) and
   `integration_credential` (the connection settings), both created by `manage.py setup` / `migrate`.

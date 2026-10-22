@@ -333,6 +333,8 @@ function UploadPage() {
           jiraId: jiraId?.trim() || null,
           images,
         })),
+        // Drafted from Bitbucket: the screens are limited to these release branches once it's published.
+        branches: (draft.source?.repositories ?? []).map(({ repository, branch }) => ({ repository, branch })),
       });
       setPublished(release);
       setDraft(null);
@@ -428,6 +430,13 @@ function UploadPage() {
                 <li key={warning}>{warning}</li>
               ))}
             </ul>
+          )}
+          {draft.source?.repositories.length > 0 && (
+            <p className="settings-hint">
+              Once published, the Bitbucket, Commits &amp; Pull Requests and Dashboard pages show only the release
+              branches ({[...new Set(draft.source.repositories.map((r) => r.branch))].join(', ')}), with each
+              version&apos;s own commits. Deleting the release takes them out again.
+            </p>
           )}
 
           <fieldset className="review-block">

@@ -223,13 +223,16 @@ class BitbucketClient:
             return _page(data, items)
         return cache.cached(SERVICE, "branches", [slug, params], fetch)
 
-    def commits(self, slug: str, *, branches=(), page=1, limit=25) -> dict:
-        """Commits on any of `branches` (newest first), or on every branch when none are given.
+    def commits(self, slug: str, *, branches=(), exclude=(), page=1, limit=25) -> dict:
+        """Commits on any of `branches` (newest first), or on every branch when none are given; with `exclude`, only
+        those that aren't on these branches too (a release branch shows only its version's commits).
 
         With branches, commits that merge one of them out into another branch are left out: only work coming into
         the branch is shown. A page can then hold fewer than `limit` commits."""
         branches = [_branch(b) for b in branches]
-        params = {**self._paging(page, limit), **({"include": branches} if branches else {})}
+        exclude = [_branch(b) for b in exclude] if branches else []
+        params = {**self._paging(page, limit), **({"include": branches} if branches else {}),
+                  **({"exclude": exclude} if exclude else {})}
 
         def fetch():
             try:

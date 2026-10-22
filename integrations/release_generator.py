@@ -20,6 +20,7 @@ from . import bitbucket_client, cache
 from .bitbucket_client import SERVICE as BITBUCKET, BitbucketClient, extract_jira_keys
 from .http import BadQuery
 from .jira_client import ISSUE_KEY_RE, JiraClient
+from .models import BRANCH, IntegrationScope
 
 RELEASE_PREFIX = "release/"
 # icrm_release_10_9_0_18122025, optionally under release/. Copies with anything before or after (backups,
@@ -76,6 +77,63 @@ def _by_version(branches: list[dict]) -> dict[tuple, dict]:
     for b in sorted(branches, key=lambda b: b["release"]):
         chosen[b["parts"]] = b
     return chosen
+
+
+def previous_branches(client: BitbucketClient, slug: str, branches) -> list[str]:
+    """For the release branches among `branches`: the previous version's branch of each, except those listed too.
+    Excluding them leaves only the commits of these versions (10.9.0 and 10.8.5 together: everything since 10.8.4)."""
+    parsed = [b for b in map(parse_branch, branches) if b]
+    if not parsed:
+        return []
+    by_version = _by_version(_release_branches(client, slug))
+    previous = []
+    for branch in parsed:
+        older = [p for p in by_version if p < branch["parts"]]
+        name = by_version[max(older)]["branch"] if older else None
+        if name and name not in branches and name not in previous:
+            previous.append(name)
+    return previous
+
+
+def published_branches(scope_branches: dict[str, list[str]]) -> list[dict]:
+    """The published releases whose release/ branch is in the scope: [{version, branches: [{repository, branch}]}]."""
+    found: dict[str, list[dict]] = {}
+    for slug, names in scope_branches.items():
+        for name in names:
+            branch = parse_branch(name)
+            if branch and branch["release"]:
+                found.setdefault(branch["version"], []).append({"repository": slug, "branch": name})
+    published = set(ReleaseVersion.objects.filter(version__in=found).values_list("version", flat=True))
+    return [{"version": v, "branches": b} for v, b in found.items() if v in published]
+
+
+def link_branches(version: str, branches: list[dict], user) -> list[str]:
+    """After a drafted version is published: limit the Bitbucket, Commits & Pull Requests and Dashboard screens to its
+    release branches (scope entries, as if an admin had added them). Returns "repository:branch" of those added."""
+    added = []
+    for entry in branches:
+        slug, name = entry.get("repository"), entry.get("branch")
+        branch = parse_branch(name or "")
+        if slug not in bitbucket_client.repositories() or not branch or not branch["release"]                 or branch["version"] != version:
+            continue
+        _, created = IntegrationScope.objects.get_or_create(kind=BRANCH, repository=slug, value=name,
+                                                            defaults={"added_by": user})
+        if created:
+            added.append(f"{slug}:{name}")
+    if added:
+        cache.invalidate()
+    return added
+
+
+def unlink_version(version: str) -> list[str]:
+    """When a release is deleted, its release branches leave the scope again."""
+    rows = [r for r in IntegrationScope.objects.filter(kind=BRANCH)
+            if (b := parse_branch(r.value)) and b["release"] and b["version"] == version]
+    for row in rows:
+        row.delete()
+    if rows:
+        cache.invalidate()
+    return [f"{r.repository}:{r.value}" for r in rows]
 
 
 def versions() -> list[dict]:

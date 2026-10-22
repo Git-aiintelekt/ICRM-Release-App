@@ -297,7 +297,10 @@ function LiveJiraTickets({ search }) {
                       <td>{issue.issueType ?? '—'}</td>
                       <td>
                         <JiraStatusBadge status={issue.status} category={issue.statusCategory} />
-                        {issue.resolution && <span className="cell-sub">{issue.resolution}</span>}
+                        {/* Jira's resolution, only when it adds something (it is often named like the status). */}
+                        {issue.resolution && issue.resolution.toLowerCase() !== (issue.status ?? '').toLowerCase() && (
+                          <span className="cell-sub">Resolution: {issue.resolution}</span>
+                        )}
                       </td>
                       <td>{issue.assignee ?? 'Unassigned'}</td>
                       <td>{issue.priority ?? '—'}</td>

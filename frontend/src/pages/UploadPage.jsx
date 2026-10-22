@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import BitbucketDraft from '../components/BitbucketDraft';
 import { useAuth } from '../context/AuthContext';
 import { CATEGORIES, CATEGORY_ORDER, SAMPLE_CSV_URL, SAMPLE_DOC_URL, versionAnchor } from '../lib/releaseFormat';
 import { Link, navigate } from '../lib/router';
@@ -10,6 +11,21 @@ const toLines = (text) =>
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
+
+// The review's editable copy of a parsed document or a Bitbucket draft (both have the same shape).
+const toDraft = (parsed) => ({
+  ...parsed,
+  version: parsed.version ?? '',
+  releaseDate: parsed.releaseDate ?? today(),
+  plannedLabel: parsed.plannedLabel ?? '',
+  summary: parsed.summary ?? '',
+  highlightsText: parsed.highlights.join('\n'),
+  knownIssuesText: parsed.knownIssues.join('\n'),
+  upgradeNotesText: parsed.upgradeNotes.join('\n'),
+  parsedVersion: parsed.version ?? '',
+  markLatest: parsed.status !== 'UPCOMING',
+  items: parsed.items.map((item, index) => ({ ...item, key: index })),
+});
 
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -275,20 +291,7 @@ function UploadPage() {
     }
     setParsing(true);
     try {
-      const parsed = await parseReleaseDocument(file);
-      setDraft({
-        ...parsed,
-        version: parsed.version ?? '',
-        releaseDate: parsed.releaseDate ?? today(),
-        plannedLabel: parsed.plannedLabel ?? '',
-        summary: parsed.summary ?? '',
-        highlightsText: parsed.highlights.join('\n'),
-        knownIssuesText: parsed.knownIssues.join('\n'),
-        upgradeNotesText: parsed.upgradeNotes.join('\n'),
-        parsedVersion: parsed.version ?? '',
-        markLatest: parsed.status !== 'UPCOMING',
-        items: parsed.items.map((item, index) => ({ ...item, key: index })),
-      });
+      setDraft(toDraft(await parseReleaseDocument(file)));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -386,6 +389,13 @@ function UploadPage() {
       {!draft && (
         <>
           <DropZone onFile={handleFile} busy={parsing} />
+          <BitbucketDraft
+            onDraft={(parsed) => {
+              setError(null);
+              setPublished(null);
+              setDraft(toDraft(parsed));
+            }}
+          />
           <FormatGuide />
         </>
       )}
@@ -408,7 +418,7 @@ function UploadPage() {
               </p>
             </div>
             <button type="button" className="button button-ghost" onClick={() => setDraft(null)}>
-              Choose another file
+              Start over
             </button>
           </div>
 

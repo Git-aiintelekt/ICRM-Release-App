@@ -50,6 +50,8 @@ api = [
     path("integrations/status", integrations_api.status),
     path("integrations/refresh", integrations_api.refresh),
     path("integrations/credentials", integrations_api.credentials_settings),
+    path("integrations/release-notes/versions", integrations_api.release_versions),
+    path("integrations/release-notes/draft", integrations_api.release_draft),
     path("integrations/scope", integrations_api.scope_add),
     path("integrations/scope/<int:scope_id>", integrations_api.scope_remove),
     path("integrations/dashboard", integrations_api.dashboard),

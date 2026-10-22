@@ -6,6 +6,8 @@ Scope: FULLADMIN can limit every screen to chosen Bitbucket branches (per reposi
 (POST/DELETE /api/integrations/scope, audited as INTEGRATION_SCOPE). Requests for anything outside it get a 400.
 Connection settings: FULLADMIN enters the Jira / Bitbucket URL, accounts and tokens (GET/PUT
 /api/integrations/credentials, audited as INTEGRATION_SETTINGS); tokens are never sent back.
+Release notes from Bitbucket: FULLADMIN lists the versions that have a release/ branch and drafts one version's
+notes from its commits and Jira (release_generator.py). Nothing is saved: the draft is published like an upload.
 Failures of one service come back as {"detail": "..."} with 400/404/502/503; the dashboard reports each section
 separately, so one service being down doesn't hide the other.
 """
@@ -24,7 +26,7 @@ from config.api import IsAdmin
 from jira.api import JiraAccess
 from releases.models import ReleaseVersion
 
-from . import bitbucket_client, cache, credentials, jira_client, scope
+from . import bitbucket_client, cache, credentials, jira_client, release_generator, scope
 from .bitbucket_client import BRANCH_RE, SLUG_RE, BitbucketClient
 from .http import IntegrationError, NotFoundUpstream
 from .jira_client import PROJECT_KEY_RE, JiraClient
@@ -510,3 +512,26 @@ def credentials_settings(request):
         record(request, audit.INTEGRATION_SETTINGS, request.user, target="integrations",
                details="changed " + ", ".join(changed))
     return Response({"fields": credentials_json(), "status": status_json()})
+
+
+# ---- release notes drafted from Bitbucket release branches ----
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+@service_errors
+def release_versions(request):
+    return Response(release_generator.versions())
+
+
+class GenerateSerializer(serializers.Serializer):
+    version = serializers.RegexField(r"^\d+(\.\d+){0,5}$", max_length=50)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+@service_errors
+def release_draft(request):
+    s = GenerateSerializer(data=request.data)
+    s.is_valid(raise_exception=True)
+    return Response(release_generator.generate(s.validated_data["version"]))
+

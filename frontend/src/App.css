@@ -2634,3 +2634,34 @@ a.stat-card:hover {
   font-size: 12px;
   font-weight: 400;
 }
+
+/* ---------- Import / Export: draft from Bitbucket ---------- */
+
+.bitbucket-draft {
+  margin: 28px 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.bitbucket-draft h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+.bitbucket-draft-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+}
+
+.bitbucket-draft-form .field {
+  flex: 1 1 320px;
+}
+
+.bitbucket-draft-form > p,
+.bitbucket-draft-branches {
+  flex-basis: 100%;
+  margin: 0;
+}

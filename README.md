@@ -159,6 +159,7 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 | `GET /api/integrations/status`, `/dashboard`, `/jira/{filters,summary,issues,releases}`, `/bitbucket/repositories[/{slug}/{branches,commits,pullrequests}]` | `integrations.api` | FULLADMIN or JIRA_VIEWER (denials audited) |
 | `POST /api/integrations/refresh` | `integrations.api.refresh` | FULLADMIN, audited as `INTEGRATION_REFRESH` |
 | `GET/PUT /api/integrations/credentials` (tokens are never returned) | `integrations.api.credentials_settings` | FULLADMIN, changes audited as `INTEGRATION_SETTINGS` (names only) |
+| `GET /api/integrations/release-notes/versions`, `POST /api/integrations/release-notes/draft` | `integrations.api.release_versions`, `release_draft` | FULLADMIN; nothing is saved (publish as usual) |
 
 ## Sign-in security
 
@@ -203,6 +204,15 @@ contains them. Without credentials each page says which settings are missing, an
   branches. With fix versions added, the Dashboard counts, the release-wise table and the Jira ticket list cover only
   those versions (this overrides `JIRA_FIX_VERSION_MAP`). It applies to every user; with nothing added, everything is
   shown. Each name is checked against Bitbucket / Jira before it's saved, and changes are audited as `INTEGRATION_SCOPE`.
+- **Release notes from Bitbucket (Import / Export → Draft from Bitbucket):** every branch named
+  `release/icrm_release_<version>_<date>` (e.g. `release/icrm_release_10_9_0_18122025` = 10.9.0, 18 Dec 2025; older
+  names use DDMMYY) is a version. Its changes are the commits on that branch that aren't on the previous version's
+  branch in the same repository (`release/` or plain `icrm_release_…`; copies such as `_bkp` or `citi_…` are ignored).
+  The Jira keys in those commit messages are looked up in Jira: summary → title, description → description, and the
+  issue type → category (Bug → Bug fix; Story / New Feature / Epic → New feature; type Security/Vulnerability or label
+  `security` → Security; other types by their wording, as for uploads). The draft opens in the upload review, with
+  warnings for issues Jira doesn't show and issues not done yet, and is saved only when published
+  (`integrations/release_generator.py`).
 - **Caching:** answers are kept in memory for `INTEGRATION_CACHE_SECONDS` (default 300); the dashboard is one request.
   Nothing from Jira or Bitbucket is copied into the database. The tables are `integration_scope` (the scope above) and
   `integration_credential` (the connection settings), both created by `manage.py setup` / `migrate`.

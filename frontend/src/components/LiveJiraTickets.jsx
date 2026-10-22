@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ApiState, JiraStatusBadge, Warnings } from './IntegrationUI';
 import { formatDateTime, formatNumber, useApi } from '../lib/integrationData';
-import { useAuth } from '../context/AuthContext';
-import { addScope, getIntegrationStatus, getJiraFilters, getJiraIssues } from '../services/integrationsService';
+import { getJiraFilters, getJiraIssues } from '../services/integrationsService';
 import { getReleases } from '../services/releaseService';
 
 const STATES = [
@@ -16,22 +15,17 @@ const STATES = [
 const PAGE_SIZE = 25;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-// Each release version's period: its saved start date (else the previous version's release date) until its release
-// date (else today, for a version that hasn't shipped).
-function releasePeriods(releases, starts) {
-  const ordered = [...releases].sort((a, b) => a.releaseDate.localeCompare(b.releaseDate));
-  return ordered
-    .map((release, index) => ({
-      version: release.version,
-      start: starts[release.version] ?? ordered[index - 1]?.releaseDate ?? null,
-      saved: Boolean(starts[release.version]),
-      end: release.status === 'UPCOMING' ? null : release.releaseDate,
-    }))
-    .reverse();
+// Published releases, newest version first (10.10.0 before 10.9.0).
+function newestFirst(releases) {
+  const parts = (v) => v.split(/[^0-9]+/).filter(Boolean).map(Number);
+  return [...releases].sort((a, b) => {
+    const [pa, pb] = [parts(a.version), parts(b.version)];
+    for (let i = 0; i < Math.max(pa.length, pb.length); i += 1) {
+      if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pb[i] ?? 0) - (pa[i] ?? 0);
+    }
+    return b.version.localeCompare(a.version);
+  });
 }
-
-const shortDate = (iso) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 function initialFilters(search) {
   const params = new URLSearchParams(search);
@@ -41,7 +35,7 @@ function initialFilters(search) {
     status: params.get('status') ?? '',
     fixVersion: params.get('fixVersion') ?? '',
     state: STATES.some((s) => s.value === params.get('state')) ? params.get('state') : '',
-    period: params.get('period') ?? '',
+    release: params.get('release') ?? '',
     createdFrom: DATE_RE.test(params.get('createdFrom') ?? '') ? params.get('createdFrom') : '',
     createdTo: DATE_RE.test(params.get('createdTo') ?? '') ? params.get('createdTo') : '',
   };
@@ -63,68 +57,34 @@ function LiveJiraTickets({ search }) {
   const q = useDebounced(filters.q.trim());
   const meta = useApi(() => getJiraFilters(), []);
 
-  const { user } = useAuth();
   const releases = useApi(() => getReleases(), []);
-  const status = useApi(() => getIntegrationStatus(), []);
-  const periods = useMemo(
-    () => releasePeriods(releases.data ?? [], status.data?.scope.versionStarts ?? {}),
-    [releases.data, status.data]
-  );
-  // There's no "any time": with no version or dates picked, the newest version's period applies.
-  const auto = !filters.period && !filters.createdFrom && !filters.createdTo ? periods[0] ?? null : null;
-  const periodValue = filters.period || auto?.version || '';
-  const createdFrom = auto ? auto.start ?? '' : filters.createdFrom;
-  const createdTo = auto ? auto.end ?? '' : filters.createdTo;
+  const versions = useMemo(() => newestFirst(releases.data ?? []).map((r) => r.version), [releases.data]);
+  // Always one release: the tickets are the Jira issues found in its release branch's commits (its published Jira
+  // IDs), newest release unless another is picked. No release published yet: no tickets.
+  const release = versions.includes(filters.release) ? filters.release : versions[0] ?? '';
 
   const request = useMemo(
     () => ({
       q,
+      release,
       type: filters.types,
       status: filters.status,
       fixVersion: filters.fixVersion,
       state: filters.state,
-      createdFrom,
-      createdTo,
+      createdFrom: filters.createdFrom,
+      createdTo: filters.createdTo,
     }),
-    [q, filters.types, filters.status, filters.fixVersion, filters.state, createdFrom, createdTo]
+    [q, release, filters.types, filters.status, filters.fixVersion, filters.state, filters.createdFrom, filters.createdTo]
   );
-  const [saving, setSaving] = useState({ busy: false, error: null });
-  const choosePeriod = (event) => {
-    const name = event.target.value;
-    const period = periods.find((p) => p.version === name);
-    setFilters((current) => ({
-      ...current,
-      period: name,
-      createdFrom: name ? period?.start ?? '' : '',
-      createdTo: name ? period?.end ?? '' : '',
-    }));
-  };
-  // Changing "from" keeps the version, so an admin can save it as that version's start date.
-  const setDate = (key) => (event) =>
-    setFilters((current) => ({
-      ...current,
-      period: key === 'createdFrom' ? periodValue : '',
-      createdFrom,
-      createdTo,
-      [key]: event.target.value,
-    }));
-  const chosen = periods.find((p) => p.version === periodValue);
-  const saveStart = async () => {
-    setSaving({ busy: true, error: null });
-    try {
-      await addScope({ kind: 'VERSION_START', repository: chosen.version, value: createdFrom });
-      status.reload();
-      setSaving({ busy: false, error: null });
-    } catch (err) {
-      setSaving({ busy: false, error: err.message });
-    }
-  };
   const requestKey = JSON.stringify(request);
   // New filters start again at page 1.
   const page = pages.key === requestKey ? pages : { key: requestKey, tokens: [null], index: 0 };
   const token = page.tokens[page.index];
 
-  const issues = useApi(() => getJiraIssues({ ...request, pageToken: token, limit: PAGE_SIZE }), [requestKey, token]);
+  const issues = useApi(
+    () => (release ? getJiraIssues({ ...request, pageToken: token, limit: PAGE_SIZE }) : Promise.resolve(null)),
+    [requestKey, token]
+  );
 
   const setFilter = (key) => (event) => setFilters((current) => ({ ...current, [key]: event.target.value }));
   const goNext = () => {
@@ -203,56 +163,58 @@ function LiveJiraTickets({ search }) {
       </div>
       <div className="audit-filters jira-filters">
         <label className="field">
-          <span>Version period (tickets created)</span>
-          <select className="input" value={periodValue} onChange={choosePeriod}>
-            {!periodValue && (
-              <option value="" disabled>
-                {periods.length ? 'Custom dates' : 'No release versions yet'}
-              </option>
-            )}
-            {periods.map((period) => (
-              <option key={period.version} value={period.version}>
-                Version {period.version}: {period.start ? shortDate(period.start) : 'start unknown'} –{' '}
-                {period.end ? shortDate(period.end) : 'today'}
+          <span>Release version</span>
+          <select className="input" value={release} onChange={setFilter('release')} disabled={!versions.length}>
+            {!versions.length && <option value="">{releases.loading ? 'Loading…' : 'No release published yet'}</option>}
+            {versions.map((version) => (
+              <option key={version} value={version}>
+                Version {version}
               </option>
             ))}
           </select>
         </label>
         <label className="field">
           <span>Created from</span>
-          <input className="input" type="date" value={createdFrom} max={createdTo || undefined} onChange={setDate('createdFrom')} />
+          <input
+            className="input"
+            type="date"
+            value={filters.createdFrom}
+            max={filters.createdTo || undefined}
+            onChange={setFilter('createdFrom')}
+          />
         </label>
         <label className="field">
           <span>Created until</span>
-          <input className="input" type="date" value={createdTo} min={createdFrom || undefined} onChange={setDate('createdTo')} />
+          <input
+            className="input"
+            type="date"
+            value={filters.createdTo}
+            min={filters.createdFrom || undefined}
+            onChange={setFilter('createdTo')}
+          />
         </label>
-        {!auto && periods.length > 0 && (
+        {(filters.createdFrom || filters.createdTo) && (
           <button
             type="button"
             className="button button-ghost"
-            onClick={() => setFilters((current) => ({ ...current, period: '', createdFrom: '', createdTo: '' }))}
+            onClick={() => setFilters((current) => ({ ...current, createdFrom: '', createdTo: '' }))}
           >
-            Newest version
+            Clear dates
           </button>
         )}
       </div>
-      {chosen && (
+      {release ? (
         <p className="settings-hint">
-          Tickets created during version {chosen.version}:{' '}
-          {chosen.saved ? 'from its saved start date' : chosen.start ? 'from the previous version’s release date' : 'no start date yet'}
-          {chosen.end ? ' until its release date.' : ' until today.'}
-          {user?.isAdmin && createdFrom && createdFrom !== chosen.start && (
-            <>
-              {' '}
-              <button type="button" className="link-button" disabled={saving.busy} onClick={saveStart}>
-                {saving.busy ? 'Saving…' : `Save ${shortDate(createdFrom)} as version ${chosen.version}’s start date`}
-              </button>
-            </>
-          )}
-          {user?.isAdmin && !createdFrom && ' Pick “Created from” to set when it started.'}
+          The Jira issues of version {release}: the ones found in its release branch&apos;s commits.
         </p>
+      ) : (
+        !releases.loading && (
+          <p className="settings-hint">
+            No release is published yet. Publish one from Import / Export → Draft from Bitbucket, and its Jira issues
+            are listed here.
+          </p>
+        )
       )}
-      {saving.error && <p className="form-error">{saving.error}</p>}
       {meta.error && meta.status !== 503 && <p className="form-error">Filter lists unavailable: {meta.error}</p>}
       <Warnings items={meta.data?.warnings} />
 

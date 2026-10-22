@@ -1,5 +1,6 @@
 """Jira (MOCKED responses): counts, bug filtering, search, pagination, release summaries, failures."""
 import re
+from unittest import mock
 
 from django.test import override_settings
 
@@ -118,6 +119,29 @@ class JiraIssueListTests(IntegrationTestCase):
         self.assertEqual(body["total"], 3)
         self.assertEqual(body["nextPageToken"], "page-2")
         self.assertFalse(body["isLast"])
+
+    def test_release_lists_only_its_own_jira_issues(self):
+        mock.patch("integrations.api.ReleaseVersion.objects.filter").start().return_value.exists.return_value = True
+        items = mock.patch("integrations.api.ReleaseItem.objects.filter").start()
+        items.return_value.exclude.return_value.exclude.return_value.values_list.return_value = ["CS-1", "cs-9", "CT-2"]
+        mock.patch("integrations.jira_client.JiraClient.issue_statuses",
+                   return_value={"CS-1": {}, "CT-2": {}}).start()  # CS-9 isn't visible in Jira
+        body = self.call(api.jira_issues, VIEWER, path="/x?release=10.9.0").data
+        sent = self.http.bodies("search/jql")[-1]["jql"]
+        self.assertIn('key in ("CS-1", "CT-2")', sent)
+        self.assertNotIn("CS-9", sent)
+        self.assertIn("key in (the 2 issues of 10.9.0)", body["jql"])
+
+    def test_release_with_no_visible_issues_matches_nothing_and_unknown_release_is_refused(self):
+        found = mock.patch("integrations.api.ReleaseVersion.objects.filter").start().return_value
+        found.exists.return_value = True
+        mock.patch("integrations.api.ReleaseItem.objects.filter").start() \
+            .return_value.exclude.return_value.exclude.return_value.values_list.return_value = []
+        mock.patch("integrations.jira_client.JiraClient.issue_statuses", return_value={}).start()
+        self.call(api.jira_issues, VIEWER, path="/x?release=10.9.0")
+        self.assertIn("key is EMPTY", self.http.bodies("search/jql")[-1]["jql"])
+        found.exists.return_value = False
+        self.assertEqual(self.call(api.jira_issues, VIEWER, path="/x?release=9.9").status_code, 400)
 
     def test_next_page_uses_token(self):
         body = self.call(api.jira_issues, VIEWER, path="/x?pageToken=page-2&limit=10").data

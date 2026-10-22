@@ -192,10 +192,25 @@ def jira_issues(request):
     if created_from and created_to and created_from > created_to:
         raise serializers.ValidationError({"createdTo": "The end date is before the start date."})
     client = JiraClient()
+    release = (params.get("release") or "").strip()
+    keys = _release_keys(client, release) if release else None
     jql = client.build_jql(text=text, issue_types=_names(request, "type"), statuses=_names(request, "status"),
                            state=state, fix_versions=_fix_versions(request, scope.current()),
-                           created_from=created_from, created_to=created_to)
-    return Response({**client.search(jql, page_token=token, limit=limit), "jql": jql.split(" ORDER BY ")[0]})
+                           created_from=created_from, created_to=created_to, keys=keys)
+    shown = jql.split(" ORDER BY ")[0]
+    if keys:  # the key list is long; say what it is instead
+        shown = shown.replace(f"key in {jira_client.jql_list(keys)}", f"key in (the {len(keys)} issues of {release})")
+    return Response({**client.search(jql, page_token=token, limit=limit), "jql": shown})
+
+
+def _release_keys(client, version: str) -> list[str]:
+    """The Jira IDs of a published release (found in its release branch's commits) that Jira shows this account."""
+    if not ReleaseVersion.objects.filter(version=version).exists():
+        raise serializers.ValidationError({"release": f"No published release {version}."})
+    keys = sorted({k.upper() for k in ReleaseItem.objects.filter(release_version__version=version)
+                   .exclude(jira_id__isnull=True).exclude(jira_id="").values_list("jira_id", flat=True)})
+    known = client.issue_statuses(keys)
+    return [k for k in keys if k in known]
 
 
 @api_view(["GET"])

@@ -246,10 +246,13 @@ class JiraClient:
     # ---- issue list ----
 
     def build_jql(self, *, text=None, issue_types=(), statuses=(), state=None, fix_versions=(), created_from=None,
-                  created_to=None) -> str:
-        """created_from / created_to are dates (inclusive): tickets created in a version's period."""
+                  created_to=None, keys=None) -> str:
+        """created_from / created_to are dates (inclusive). keys: only these issues (a release's Jira IDs; give
+        only keys Jira knows, since JQL naming an unknown key is an error); an empty list matches nothing."""
         meta = self.metadata()
         clauses = [self._scope(meta)]
+        if keys is not None:
+            clauses.append(f"key in {jql_list(keys)}" if keys else "key is EMPTY")
         if created_from:
             clauses.append(f'created >= "{created_from.isoformat()}"')
         if created_to:

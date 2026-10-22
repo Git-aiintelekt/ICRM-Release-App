@@ -25,9 +25,10 @@ export const removeScope = (id) => apiFetch(`${BASE}/scope/${id}`, { method: 'DE
 export const getDashboard = () => apiFetch(`${BASE}/dashboard`);
 
 export const getJiraFilters = () => apiFetch(`${BASE}/jira/filters`);
-export function getJiraIssues({ q, type, status, state, fixVersion, createdFrom, createdTo, pageToken, limit = 25 } = {}) {
+// release: only the Jira issues of that published release (found in its release branch's commits).
+export function getJiraIssues({ q, release, type, status, state, fixVersion, createdFrom, createdTo, pageToken, limit = 25 } = {}) {
   return apiFetch(
-    `${BASE}/jira/issues${query({ q, type, status, state, fixVersion, createdFrom, createdTo, pageToken, limit })}`
+    `${BASE}/jira/issues${query({ q, release, type, status, state, fixVersion, createdFrom, createdTo, pageToken, limit })}`
   );
 }
 

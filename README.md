@@ -217,6 +217,10 @@ contains them. Without credentials each page says which settings are missing, an
 - **Dashboard:** the Jira ticket cards (total, open, resolved / closed; bugs: total, open, resolved / closed) count
   the Jira issues of one **published release branch**, chosen in the **Release** list (newest first). They are all
   0 until a release branch is published. With several published, a table compares them. Integration health below.
+- **Jira Tickets (Live tab):** always for one published **release version** (newest first): only the Jira issues
+  found in its release branch's commits, i.e. its published Jira IDs (`?release=<version>` on
+  `/api/integrations/jira/issues`). Created dates, type, status and search narrow it further. Nothing is listed
+  until a release is published.
 - **Release-wise summaries** (`GET /api/integrations/jira/releases`, no longer on the Dashboard): listed under the fix
   version names Jira actually has, tied to this app's versions only through `JIRA_FIX_VERSION_MAP`.
 - **Commits → Jira:** keys of the configured projects in commit messages / PR titles are looked up live in Jira. A commit

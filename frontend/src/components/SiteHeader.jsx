@@ -26,7 +26,7 @@ function SiteHeader({ pathname, menuOpen, onToggleMenu }) {
         <Link to="/" className="brand">
           <img src={LOGO_URL} alt="" className="brand-logo" width="32" height="32" />
           <span>
-            iCRM <span className="brand-sub">Releases</span>
+            Release <span className="brand-sub">Manager</span>
           </span>
         </Link>
 

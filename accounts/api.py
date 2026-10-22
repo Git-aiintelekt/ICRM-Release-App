@@ -51,7 +51,7 @@ def _start_session(request, user: AppUser) -> dict:
 
 
 class CredentialsSerializer(serializers.Serializer):
-    # Email for normal accounts; older accounts without an email (e.g. "admin") use their username.
+    # Email for normal accounts; accounts without an email (e.g. "releasemanager") use their username.
     email = serializers.CharField(min_length=1, max_length=191, trim_whitespace=False)
     password = serializers.CharField(min_length=1, max_length=200, trim_whitespace=False)
 
@@ -183,7 +183,7 @@ def me(request):
 def _send_reset_mail(address: str, text: str) -> None:
     """Runs in a background thread: a failure can't reach the user, so it goes to the server log."""
     try:
-        send_mail("Reset your iCRM Releases password", text, None, [address], fail_silently=False)
+        send_mail("Reset your Release Manager password", text, None, [address], fail_silently=False)
         log.info("Password reset email handed to the %s mail backend.", delivery_mode())
     except Exception as exc:  # noqa: BLE001 - any failure here would otherwise vanish with the thread
         log.error("Password reset email could not be sent: %s: %s", type(exc).__name__, exc)
@@ -199,7 +199,7 @@ def forgot_password(request):
         minutes = settings.PASSWORD_RESET_TTL_SECONDS // 60
         text = (
             f"Hello {user.display_name or user.email},\n\n"
-            "Someone asked to reset the password for your iCRM Releases account.\n"
+            "Someone asked to reset the password for your Release Manager account.\n"
             f"Choose a new password here (the link works once, for {minutes} minutes):\n\n"
             f"{link}\n\n"
             "If you didn't ask for this, ignore this email; your password stays the same.\n"

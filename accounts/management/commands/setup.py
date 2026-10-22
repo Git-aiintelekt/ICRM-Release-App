@@ -3,7 +3,7 @@ admin account when there are no users yet. Safe to run any number of times; `run
 
     .venv\\Scripts\\python manage.py setup
 
-The default account is admin / admin. Signing in with it shows only a password change form until a new password is
+The default account is releasemanager / releasemanager. Signing in with it shows only a password change form until a new password is
 chosen, and Django Admin stays closed to it until then.
 """
 import re
@@ -16,14 +16,14 @@ from django.db import OperationalError, connection, transaction
 
 from accounts.models import AppUser, PasswordChangeRequired
 
-DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "admin"
+DEFAULT_ADMIN_USERNAME = "releasemanager"
+DEFAULT_ADMIN_PASSWORD = "releasemanager"
 UNKNOWN_DATABASE = 1049
 DATABASE_NAME_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 
 
 class Command(BaseCommand):
-    help = "Create the database, its tables and a default admin (admin / admin) where they are missing."
+    help = "Create the database, its tables and a default admin (releasemanager / releasemanager) where they are missing."
     # The system checks connect to the database, which may not exist yet; migrate runs them afterwards.
     requires_system_checks = []
 

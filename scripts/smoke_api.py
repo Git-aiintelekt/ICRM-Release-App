@@ -38,7 +38,7 @@ class Rollback(Exception):
 
 image_dir = Path(settings.IMAGE_DIR)
 files_before = set(image_dir.iterdir()) if image_dir.exists() else set()
-admin_user = AppUser.objects.get(username="admin")
+admin_user = AppUser.objects.get(username="releasemanager")
 H = {"HTTP_HOST": "localhost"}
 admin = Client(**H, HTTP_AUTHORIZATION=f"Bearer {create_token(admin_user.id)}")
 anon = Client(**H)

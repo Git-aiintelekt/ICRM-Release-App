@@ -10,8 +10,8 @@ from integrations import api as integrations_api
 from jira import api as jira_api
 from releases import api as releases_api
 
-admin.site.site_header = "iCRM Release Notes administration"
-admin.site.site_title = "iCRM Release Notes"
+admin.site.site_header = "Release Manager administration"
+admin.site.site_title = "Release Manager"
 admin.site.index_title = "Manage release notes"
 
 # Same paths as python-backend (no trailing slashes), so the React app needs no changes.

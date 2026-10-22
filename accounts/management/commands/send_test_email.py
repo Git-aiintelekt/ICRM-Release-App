@@ -32,7 +32,7 @@ class Command(BaseCommand):
                               f"({'STARTTLS' if settings.EMAIL_USE_TLS else 'SSL' if settings.EMAIL_USE_SSL else 'no TLS'}), "
                               f"user {settings.EMAIL_HOST_USER or '-'}, password {'set' if settings.EMAIL_HOST_PASSWORD else 'not set'}")
         try:
-            send_mail("iCRM Releases test email", "This is a test email from iCRM Releases. Mail settings work.",
+            send_mail("Release Manager test email", "This is a test email from Release Manager. Mail settings work.",
                       None, [to], fail_silently=False)
         except Exception as exc:  # noqa: BLE001 - report any failure plainly
             raise CommandError(f"Sending failed: {type(exc).__name__}: {exc}")

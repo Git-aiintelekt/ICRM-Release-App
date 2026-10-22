@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
-// Shown instead of every page while the signed-in account still has the default password (admin / admin).
+// Shown instead of every page while the signed-in account still has the default password (releasemanager / releasemanager).
 function ChangePasswordPage() {
   const { user, changePassword, logout } = useAuth();
   const [current, setCurrent] = useState('');

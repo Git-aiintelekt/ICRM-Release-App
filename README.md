@@ -1,6 +1,6 @@
-# iCRM Release Notes (Django)
+# Release Manager (Django)
 
-The Release Notes management app: add, edit, publish and email iCRM release notes, drafted from Word documents or
+Release Manager, the iCRM release notes app: add, edit, publish and email iCRM release notes, drafted from Word documents or
 straight from Bitbucket release branches and their Jira issues. It replaced `python-backend` (FastAPI, now retired):
 it still works on that app's database (`react_database`) as it is, and creates every table itself on a new one.
 
@@ -57,14 +57,14 @@ cd ICRM-Release-App
    runs `manage.py setup`, which:
    - creates the database named in `DB_NAME` if it doesn't exist,
    - creates every table (`migrate`; on an existing database it adds only what is missing, data untouched),
-   - creates the default admin **`admin` / `admin`** when there are no users yet.
+   - creates the default admin **`releasemanager` / `releasemanager`** when there are no users yet.
 
    ```powershell
    .venv\Scripts\python manage.py runserver 8000
    ```
    On a server started with waitress instead of `runserver`, run `.venv\Scripts\python manage.py setup` once after
    each deployment.
-5. **Sign in and connect Jira and Bitbucket.** Open http://localhost:8000 and sign in as `admin` / `admin`. The app
+5. **Sign in and connect Jira and Bitbucket.** Open http://localhost:8000 and sign in as `releasemanager` / `releasemanager`. The app
    asks for a new password (at least 8 characters) before anything else works; Django Admin stays closed to the
    account until then. Unless `.env` already has them, open **Settings → Integrations → Jira and Bitbucket
    connection**, enter the Jira site URL, email and API token and the Bitbucket workspace, email and API token, save,
@@ -190,7 +190,7 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 | Account lockout | After 5 failed sign-ins to one account (from any IP) its sign-in is refused for 15 minutes, audited as a failed sign-in with "locked". A password reset unlocks it | `LOGIN_LOCKOUT_ATTEMPTS`, `LOGIN_LOCKOUT_SECONDS` |
 | Sign out | **Sign out** ends that device's token at once (`revoked_token`). **Sign out everywhere** (header) ends every device's (`user_token_cutoff`), audited as `LOGOUT_EVERYWHERE` | |
 | Password change, disabled account | A password change (reset link, Django Admin, `changepassword`) and disabling an account end every earlier sign-in | |
-| Default admin | `manage.py setup` creates `admin` / `admin` only when there are no users. Until its password is changed the API answers 403 to everything except `/api/auth/me`, `/change-password` and the sign-outs, and Django Admin refuses the account (`password_change_required`) | |
+| Default admin | `manage.py setup` creates `releasemanager` / `releasemanager` only when there are no users. Until its password is changed the API answers 403 to everything except `/api/auth/me`, `/change-password` and the sign-outs, and Django Admin refuses the account (`password_change_required`) | |
 | Self sign-up | Limited to `@aiintelekt.com` addresses by default; can be switched off (the sign-in page then says to ask an administrator) | `ALLOW_REGISTRATION`, `REGISTRATION_EMAIL_DOMAINS` (empty = any domain) |
 | Content Security Policy | Report-only: browsers log what it would block in the developer console. Before enforcing it, move the inline theme script in `frontend/index.html` into a file | `CSP_ENFORCE=true` |
 | Health check | `GET /api/health`: 200 `{"status": "ok"}` or 503 when the database doesn't answer, for the reverse proxy and uptime monitors | |

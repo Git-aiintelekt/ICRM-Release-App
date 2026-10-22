@@ -7,7 +7,7 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.views.decorators.cache import never_cache
 
-NOT_BUILT = """<!doctype html><meta charset="utf-8"><title>iCRM Release Notes</title>
+NOT_BUILT = """<!doctype html><meta charset="utf-8"><title>Release Manager</title>
 <body style="font-family:system-ui;max-width:640px;margin:64px auto;line-height:1.5">
 <h1>The React app isn't built yet</h1>
 <p>Build it once, then reload:</p><pre>cd frontend

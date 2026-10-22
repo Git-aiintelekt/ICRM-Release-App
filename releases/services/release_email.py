@@ -108,7 +108,7 @@ def build_email(release: dict, *, to: list[str], cc: list[str], message: str, se
                 reply_to: str | None = None) -> EmailMultiAlternatives:
     intro = (message.strip() + "\n\n") if message.strip() else ""
     body = (f"{intro}{notes_text(release)}\nFull release notes with screenshots: {page_url(release)}\n"
-            f"The notes are also attached as {file_name(release)}.\n\nSent by {sender_name} from iCRM Releases.\n")
+            f"The notes are also attached as {file_name(release)}.\n\nSent by {sender_name} from Release Manager.\n")
     email = EmailMultiAlternatives(subject=f"iCRM Release {release['version']} - release notes", body=body,
                                    to=to, cc=cc, reply_to=[reply_to] if reply_to else None)
     email.attach(file_name(release), notes_html(release), "text/html")

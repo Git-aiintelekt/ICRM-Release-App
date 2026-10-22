@@ -4,7 +4,7 @@ from .models import AppUser
 
 
 class EmailOrUsernameBackend(ModelBackend):
-    """Sign in with email; older accounts without one (e.g. "admin") use their username."""
+    """Sign in with email; accounts without one (e.g. "releasemanager") use their username."""
 
     def authenticate(self, request, username=None, password=None, **kwargs):
         identifier = (username or kwargs.get("email") or "").strip().lower()

@@ -18,7 +18,7 @@ from releases.models import ReleaseVersion
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 )
-SAMPLE_DOCX = Path(settings.BASE_DIR) / "scripts" / "samples" / "iCRM-Release-11.1-sample.docx"
+SAMPLE_DOCX = Path(settings.BASE_DIR) / "frontend" / "public" / "samples" / "iCRM-Release-11.1-sample.docx"
 results = []
 
 

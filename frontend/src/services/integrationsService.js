@@ -25,8 +25,6 @@ export const removeScope = (id) => apiFetch(`${BASE}/scope/${id}`, { method: 'DE
 export const getDashboard = () => apiFetch(`${BASE}/dashboard`);
 
 export const getJiraFilters = () => apiFetch(`${BASE}/jira/filters`);
-export const getJiraSummary = (fixVersion) => apiFetch(`${BASE}/jira/summary${query({ fixVersion })}`);
-export const getJiraReleases = () => apiFetch(`${BASE}/jira/releases`);
 export function getJiraIssues({ q, type, status, state, fixVersion, createdFrom, createdTo, pageToken, limit = 25 } = {}) {
   return apiFetch(
     `${BASE}/jira/issues${query({ q, type, status, state, fixVersion, createdFrom, createdTo, pageToken, limit })}`

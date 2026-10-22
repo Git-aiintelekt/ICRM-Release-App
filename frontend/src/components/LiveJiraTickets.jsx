@@ -63,6 +63,19 @@ function LiveJiraTickets({ search }) {
   const q = useDebounced(filters.q.trim());
   const meta = useApi(() => getJiraFilters(), []);
 
+  const { user } = useAuth();
+  const releases = useApi(() => getReleases(), []);
+  const status = useApi(() => getIntegrationStatus(), []);
+  const periods = useMemo(
+    () => releasePeriods(releases.data ?? [], status.data?.scope.versionStarts ?? {}),
+    [releases.data, status.data]
+  );
+  // There's no "any time": with no version or dates picked, the newest version's period applies.
+  const auto = !filters.period && !filters.createdFrom && !filters.createdTo ? periods[0] ?? null : null;
+  const periodValue = filters.period || auto?.version || '';
+  const createdFrom = auto ? auto.start ?? '' : filters.createdFrom;
+  const createdTo = auto ? auto.end ?? '' : filters.createdTo;
+
   const request = useMemo(
     () => ({
       q,
@@ -70,17 +83,10 @@ function LiveJiraTickets({ search }) {
       status: filters.status,
       fixVersion: filters.fixVersion,
       state: filters.state,
-      createdFrom: filters.createdFrom,
-      createdTo: filters.createdTo,
+      createdFrom,
+      createdTo,
     }),
-    [q, filters.types, filters.status, filters.fixVersion, filters.state, filters.createdFrom, filters.createdTo]
-  );
-  const { user } = useAuth();
-  const releases = useApi(() => getReleases(), []);
-  const status = useApi(() => getIntegrationStatus(), []);
-  const periods = useMemo(
-    () => releasePeriods(releases.data ?? [], status.data?.scope.versionStarts ?? {}),
-    [releases.data, status.data]
+    [q, filters.types, filters.status, filters.fixVersion, filters.state, createdFrom, createdTo]
   );
   const [saving, setSaving] = useState({ busy: false, error: null });
   const choosePeriod = (event) => {
@@ -95,12 +101,18 @@ function LiveJiraTickets({ search }) {
   };
   // Changing "from" keeps the version, so an admin can save it as that version's start date.
   const setDate = (key) => (event) =>
-    setFilters((current) => ({ ...current, period: key === 'createdFrom' ? current.period : '', [key]: event.target.value }));
-  const chosen = periods.find((p) => p.version === filters.period);
+    setFilters((current) => ({
+      ...current,
+      period: key === 'createdFrom' ? periodValue : '',
+      createdFrom,
+      createdTo,
+      [key]: event.target.value,
+    }));
+  const chosen = periods.find((p) => p.version === periodValue);
   const saveStart = async () => {
     setSaving({ busy: true, error: null });
     try {
-      await addScope({ kind: 'VERSION_START', repository: chosen.version, value: filters.createdFrom });
+      await addScope({ kind: 'VERSION_START', repository: chosen.version, value: createdFrom });
       status.reload();
       setSaving({ busy: false, error: null });
     } catch (err) {
@@ -192,8 +204,12 @@ function LiveJiraTickets({ search }) {
       <div className="audit-filters jira-filters">
         <label className="field">
           <span>Version period (tickets created)</span>
-          <select className="input" value={filters.period} onChange={choosePeriod}>
-            <option value="">Any time</option>
+          <select className="input" value={periodValue} onChange={choosePeriod}>
+            {!periodValue && (
+              <option value="" disabled>
+                {periods.length ? 'Custom dates' : 'No release versions yet'}
+              </option>
+            )}
             {periods.map((period) => (
               <option key={period.version} value={period.version}>
                 Version {period.version}: {period.start ? shortDate(period.start) : 'start unknown'} –{' '}
@@ -204,19 +220,19 @@ function LiveJiraTickets({ search }) {
         </label>
         <label className="field">
           <span>Created from</span>
-          <input className="input" type="date" value={filters.createdFrom} max={filters.createdTo || undefined} onChange={setDate('createdFrom')} />
+          <input className="input" type="date" value={createdFrom} max={createdTo || undefined} onChange={setDate('createdFrom')} />
         </label>
         <label className="field">
           <span>Created until</span>
-          <input className="input" type="date" value={filters.createdTo} min={filters.createdFrom || undefined} onChange={setDate('createdTo')} />
+          <input className="input" type="date" value={createdTo} min={createdFrom || undefined} onChange={setDate('createdTo')} />
         </label>
-        {(filters.createdFrom || filters.createdTo) && (
+        {!auto && periods.length > 0 && (
           <button
             type="button"
             className="button button-ghost"
             onClick={() => setFilters((current) => ({ ...current, period: '', createdFrom: '', createdTo: '' }))}
           >
-            Clear dates
+            Newest version
           </button>
         )}
       </div>
@@ -225,15 +241,15 @@ function LiveJiraTickets({ search }) {
           Tickets created during version {chosen.version}:{' '}
           {chosen.saved ? 'from its saved start date' : chosen.start ? 'from the previous version’s release date' : 'no start date yet'}
           {chosen.end ? ' until its release date.' : ' until today.'}
-          {user?.isAdmin && filters.createdFrom && filters.createdFrom !== chosen.start && (
+          {user?.isAdmin && createdFrom && createdFrom !== chosen.start && (
             <>
               {' '}
               <button type="button" className="link-button" disabled={saving.busy} onClick={saveStart}>
-                {saving.busy ? 'Saving…' : `Save ${shortDate(filters.createdFrom)} as version ${chosen.version}’s start date`}
+                {saving.busy ? 'Saving…' : `Save ${shortDate(createdFrom)} as version ${chosen.version}’s start date`}
               </button>
             </>
           )}
-          {user?.isAdmin && !filters.createdFrom && ' Pick “Created from” to set when it started.'}
+          {user?.isAdmin && !createdFrom && ' Pick “Created from” to set when it started.'}
         </p>
       )}
       {saving.error && <p className="form-error">{saving.error}</p>}

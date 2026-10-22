@@ -13,6 +13,29 @@ const PR_STATES = [
   { value: 'SUPERSEDED', label: 'Superseded' },
 ];
 const BRANCH_RE = /^[A-Za-z0-9._/-]+$/;
+// release/icrm_release_10_9_0_18122025 -> [10, 9, 0]; other branch names have no version.
+const RELEASE_VERSION_RE = /icrm_release_(\d+(?:_\d+)*)_(?:\d{8}|\d{6})$/;
+
+function releaseVersion(name) {
+  const match = RELEASE_VERSION_RE.exec(name);
+  return match ? match[1].split('_').map(Number) : null;
+}
+
+// Release branches newest version first, then any other branches by name.
+function newestFirst(names) {
+  return [...names].sort((a, b) => {
+    const va = releaseVersion(a);
+    const vb = releaseVersion(b);
+    if (va && vb) {
+      for (let i = 0; i < Math.max(va.length, vb.length); i += 1) {
+        if ((va[i] ?? 0) !== (vb[i] ?? 0)) return (vb[i] ?? 0) - (va[i] ?? 0);
+      }
+      return 0;
+    }
+    if (va || vb) return va ? -1 : 1;
+    return a.localeCompare(b);
+  });
+}
 
 const JIRA_NOTE =
   'Jira status is read live from Jira for each key in the message. A commit or merged pull request does not by itself mean the ticket is resolved.';
@@ -147,9 +170,10 @@ function CommitsPage({ search = '' }) {
   const repositories = status.data?.bitbucket.repositories ?? [];
   const slug = repositories.includes(repo) ? repo : repositories[0];
   // Branches an admin limited this repository to (Settings → Integrations); empty = every branch.
-  const scopeBranches = status.data?.scope.branches[slug] ?? [];
+  const scopeBranches = newestFirst(status.data?.scope.branches[slug] ?? []);
   const scoped = scopeBranches.length > 0;
-  const shownBranch = scoped && !scopeBranches.includes(branch) ? '' : branch;
+  // With branches added, one of them is always shown: the newest release branch unless another one is picked.
+  const shownBranch = scoped && !scopeBranches.includes(branch) ? scopeBranches[0] : branch;
   const branchInvalid = !scoped && branchInput.trim() && !BRANCH_RE.test(branchInput.trim());
 
   return (
@@ -210,7 +234,6 @@ function CommitsPage({ search = '' }) {
                   <label className="field">
                     <span>Branch</span>
                     <select className="input" value={shownBranch} onChange={(event) => setBranch(event.target.value)}>
-                      <option value="">All added branches ({scopeBranches.length})</option>
                       {scopeBranches.map((name) => (
                         <option key={name} value={name}>
                           {name}

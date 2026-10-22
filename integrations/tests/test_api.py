@@ -105,12 +105,17 @@ class StatusTests(IntegrationTestCase):
 
 
 class DashboardTests(IntegrationTestCase):
-    def test_nothing_published_means_no_counts_and_no_external_calls(self):
+    def test_nothing_published_means_no_counts_and_only_a_bitbucket_health_check(self):
         http = self.serve(bitbucket_and_jira())
         body = self.call(api.dashboard, VIEWER).data
         self.assertEqual(body["releaseBranches"]["data"], [])  # nothing published from a release branch
         self.assertEqual(set(body), {"releaseBranches", "status"})
-        self.assertEqual(http.calls, [])  # no project-wide Jira counts, no Bitbucket activity
+        # No project-wide Jira counts and no Bitbucket activity: one repository read, for its health.
+        self.assertEqual([c["path"] for c in http.calls], ["/2.0/repositories/acme/icrm-base-framework-master"])
+        self.assertIsNotNone(body["status"]["bitbucket"]["lastSuccessAt"])
+        calls = len(http.calls)
+        self.call(api.dashboard, VIEWER)
+        self.assertEqual(len(http.calls), calls)  # cached
 
     @override_settings(JIRA_RESOLVED_STATUSES=["Resolved"], JIRA_CLOSED_STATUSES=["Closed", "Done"])
     def test_counts_split_done_into_resolved_and_closed(self):

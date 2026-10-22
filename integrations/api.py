@@ -328,6 +328,9 @@ def dashboard(request):
         body["releaseBranches"] = _section(lambda: _release_branch_counts(client, sc))
     else:
         body["releaseBranches"] = {"data": None, "error": None, "notConfigured": True}
+    if bitbucket_client.is_configured():
+        # Nothing else here reads Bitbucket: one cached repository read keeps its health current.
+        _section(lambda: BitbucketClient().repository(bitbucket_client.repositories()[0]))
     body["status"] = status_json(sc)
     return Response(body)
 

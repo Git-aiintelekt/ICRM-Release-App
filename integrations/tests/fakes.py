@@ -95,6 +95,7 @@ class FakeUser:
         self.can_view_jira = admin or jira
         self.is_authenticated = True
         self.is_active = True
+        self.must_change_password = False
 
 
 # ---- Jira payloads ----

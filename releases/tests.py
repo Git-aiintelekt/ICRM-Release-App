@@ -39,6 +39,7 @@ class ReleaseEmailTests(SimpleTestCase):
     def setUp(self):
         self.audit = mock.patch("releases.api.record").start()
         mock.patch("releases.api.one_release_json", side_effect=lambda **lookup: RELEASE if lookup == {"pk": 5} else None).start()
+        mock.patch("integrations.credentials.stored", return_value={}).start()  # no connection settings saved in the app
         self.addCleanup(mock.patch.stopall)
 
     def call(self, view, user, *, method="get", data=None, release_id=5):

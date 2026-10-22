@@ -25,6 +25,9 @@ class IntegrationTestCase(SimpleTestCase):
         mock.patch("integrations.scope.current", side_effect=lambda: self.scope).start()
         self.jira_projects = []  # projects admins added on top of JIRA_PROJECT_KEYS
         mock.patch("integrations.scope.jira_projects", side_effect=lambda: self.jira_projects).start()
+        # Connection settings saved on Settings → Integrations (a database table): none, so .env (TEST_SETTINGS) applies.
+        self.saved_credentials = {}
+        mock.patch("integrations.credentials.stored", side_effect=lambda: self.saved_credentials).start()
         self.repository_changes = ([], [])  # (added, removed .env repositories)
         mock.patch("integrations.scope.repository_changes", side_effect=lambda: self.repository_changes).start()
         self.addCleanup(mock.patch.stopall)

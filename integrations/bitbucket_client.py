@@ -9,7 +9,7 @@ import urllib.parse
 
 from django.conf import settings
 
-from . import cache, jira_client, scope
+from . import cache, credentials, jira_client, scope
 from .http import BadQuery, NotConfigured, NotFoundUpstream, basic_auth, request_json
 
 SERVICE = "Bitbucket"
@@ -32,20 +32,20 @@ def repositories() -> list[str]:
 
 
 def _auth() -> str | None:
-    if settings.BITBUCKET_ACCESS_TOKEN:
-        return f"Bearer {settings.BITBUCKET_ACCESS_TOKEN}"
-    if settings.BITBUCKET_EMAIL and settings.BITBUCKET_API_TOKEN:
-        return basic_auth(settings.BITBUCKET_EMAIL, settings.BITBUCKET_API_TOKEN)
+    if credentials.get("BITBUCKET_ACCESS_TOKEN"):
+        return f"Bearer {credentials.get("BITBUCKET_ACCESS_TOKEN")}"
+    if credentials.get("BITBUCKET_EMAIL") and credentials.get("BITBUCKET_API_TOKEN"):
+        return basic_auth(credentials.get("BITBUCKET_EMAIL"), credentials.get("BITBUCKET_API_TOKEN"))
     return None
 
 
 def is_configured() -> bool:
-    return bool(settings.BITBUCKET_WORKSPACE and repositories() and _auth())
+    return bool(credentials.get("BITBUCKET_WORKSPACE") and repositories() and _auth())
 
 
 def missing_settings() -> list[str]:
     missing = []
-    if not settings.BITBUCKET_WORKSPACE:
+    if not credentials.get("BITBUCKET_WORKSPACE"):
         missing.append("BITBUCKET_WORKSPACE")
     if not repositories():
         missing.append("BITBUCKET_REPOSITORIES")
@@ -150,7 +150,7 @@ class BitbucketClient:
         if not is_configured():
             raise NotConfigured("Bitbucket is not configured. Missing: " + ", ".join(missing_settings()) + ".")
         self.opener = opener
-        self.workspace = settings.BITBUCKET_WORKSPACE
+        self.workspace = credentials.get("BITBUCKET_WORKSPACE")
 
     def _repo(self, slug: str) -> str:
         if slug not in repositories():

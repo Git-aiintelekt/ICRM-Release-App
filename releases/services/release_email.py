@@ -10,6 +10,8 @@ from html import escape
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 
+from integrations import credentials
+
 from ..models import CATEGORY_ORDER, Category
 
 HEADINGS = {"NEW_FEATURE": "What's new", "IMPROVEMENT": "Improvements", "BUG_FIX": "Bug fixes", "SECURITY": "Security"}
@@ -39,7 +41,7 @@ def _grouped(release: dict):
 
 
 def _jira_link(key: str) -> str:
-    base = settings.JIRA_BASE_URL
+    base = credentials.get("JIRA_BASE_URL")
     return f'<a href="{escape(base)}/browse/{escape(key)}">{escape(key)}</a>' if base else escape(key)
 
 

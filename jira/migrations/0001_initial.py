@@ -3,6 +3,45 @@
 import django.utils.timezone
 from django.db import migrations, models
 
+# The tables come from the original app and stay unmanaged (Django never alters them). On an empty
+# database these statements create them; on an existing one IF NOT EXISTS leaves them untouched.
+CREATE_TABLES = [
+    """CREATE TABLE IF NOT EXISTS `jira_issue` (
+      `jira_id` varchar(20) NOT NULL,
+      `description` varchar(1000) DEFAULT NULL,
+      `link` varchar(255) NOT NULL,
+      `created_at` datetime NOT NULL,
+      `updated_at` datetime NOT NULL,
+      PRIMARY KEY (`jira_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+    """CREATE TABLE IF NOT EXISTS `jira_seed_entry` (
+      `id` bigint(20) NOT NULL AUTO_INCREMENT,
+      `jira_id` varchar(20) NOT NULL,
+      `type` varchar(20) NOT NULL,
+      `seed_ref` varchar(150) DEFAULT NULL,
+      `content` mediumtext,
+      `display_order` int(11) NOT NULL DEFAULT '0',
+      PRIMARY KEY (`id`),
+      KEY `idx_jira_seed_entry_jira_id` (`jira_id`),
+      CONSTRAINT `fk_jira_seed_entry_jira_issue` FOREIGN KEY (`jira_id`) REFERENCES `jira_issue` (`jira_id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+    """CREATE TABLE IF NOT EXISTS `jira_table_entry` (
+      `id` bigint(20) NOT NULL AUTO_INCREMENT,
+      `jira_id` varchar(20) NOT NULL,
+      `type` varchar(20) NOT NULL,
+      `table_name` varchar(255) DEFAULT NULL,
+      `primary_key_field` varchar(255) DEFAULT NULL,
+      `primary_key_value` varchar(500) DEFAULT NULL,
+      `name_description` varchar(500) DEFAULT NULL,
+      `seed_ref` varchar(150) DEFAULT NULL,
+      `content` mediumtext,
+      `display_order` int(11) NOT NULL DEFAULT '0',
+      PRIMARY KEY (`id`),
+      KEY `idx_jira_table_entry_jira_id` (`jira_id`),
+      CONSTRAINT `fk_jira_table_entry_jira_issue` FOREIGN KEY (`jira_id`) REFERENCES `jira_issue` (`jira_id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+]
+
 
 class Migration(migrations.Migration):
 
@@ -12,6 +51,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunSQL(CREATE_TABLES, migrations.RunSQL.noop),
         migrations.CreateModel(
             name='JiraIssue',
             fields=[

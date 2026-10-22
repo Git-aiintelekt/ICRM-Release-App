@@ -1,4 +1,4 @@
-"""/api/auth/* (sign in, sign up, password reset) and /api/admin/users (who is admin / may see Jira)."""
+"""/api/auth/* (sign in, sign up, password reset and change) and /api/admin/users (who is admin / may see Jira)."""
 import logging
 import threading
 
@@ -22,7 +22,7 @@ from config.api import (IsAdmin, IsSignedIn, LoginThrottle, PasswordResetThrottl
 from config.mail import delivery_mode
 
 from .backends import EmailOrUsernameBackend
-from .models import ADMIN_GROUP_ID, JIRA_VIEWER_GROUP_ID, AppUser, AppUserSecurityGroup
+from .models import ADMIN_GROUP_ID, JIRA_VIEWER_GROUP_ID, AppUser, AppUserSecurityGroup, PasswordChangeRequired
 from .tokens import create_reset_token, create_token, read_reset_token, revoke_all_tokens, revoke_token
 
 log = logging.getLogger(__name__)
@@ -39,6 +39,8 @@ def user_json(user: AppUser) -> dict:
         "displayName": user.display_name,
         "isAdmin": ADMIN_GROUP_ID in groups,
         "canViewJira": bool(groups & {ADMIN_GROUP_ID, JIRA_VIEWER_GROUP_ID}),
+        # True for the default admin until its password is changed: the app shows only the change form.
+        "mustChangePassword": user.must_change_password,
     }
 
 
@@ -67,6 +69,11 @@ class ForgotPasswordSerializer(serializers.Serializer):
 class ResetPasswordSerializer(serializers.Serializer):
     token = serializers.CharField(min_length=1, max_length=1000)
     password = serializers.CharField(min_length=8, max_length=200, trim_whitespace=False)
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(min_length=1, max_length=200, trim_whitespace=False)
+    new_password = serializers.CharField(min_length=8, max_length=200, trim_whitespace=False)
 
 
 def _valid(serializer_class, request):
@@ -216,9 +223,29 @@ def reset_password(request):
     user.set_password(body["password"])  # the save ends every earlier sign-in (AppUser.save)
     user.last_login = timezone.now()
     user.save(update_fields=["password", "last_login"])
+    PasswordChangeRequired.objects.filter(user_id=user.id).delete()
     for identifier in {user.email, user.username} - {None}:
         cache.delete(_failures_key(identifier))
     record(request, audit.PASSWORD_RESET, user)
+    return Response(_start_session(request, user))
+
+
+@api_view(["POST"])
+@permission_classes([IsSignedIn])
+@throttle_classes([PasswordResetThrottle])
+def change_password(request):
+    """A signed-in user replaces their password (required first for the default admin account)."""
+    body = _valid(ChangePasswordSerializer, request)
+    user = request.user
+    if not user.check_password(body["current_password"]):
+        raise bad_request("The current password is not correct.")
+    if body["new_password"] == body["current_password"]:
+        raise bad_request("Choose a password different from the current one.")
+    with transaction.atomic():
+        user.set_password(body["new_password"])  # the save ends every earlier sign-in, this one included
+        user.save(update_fields=["password"])
+        PasswordChangeRequired.objects.filter(user_id=user.id).delete()
+        record(request, audit.PASSWORD_CHANGE, user)
     return Response(_start_session(request, user))
 
 

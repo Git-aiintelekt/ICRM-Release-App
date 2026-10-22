@@ -3,6 +3,34 @@
 import django.utils.timezone
 from django.db import migrations, models
 
+# The tables come from the original app and stay unmanaged (Django never alters them). On an empty
+# database these statements create them; on an existing one IF NOT EXISTS leaves them untouched.
+CREATE_TABLES = [
+    """CREATE TABLE IF NOT EXISTS `app_user` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `username` varchar(100) NOT NULL,
+      `email` varchar(191) DEFAULT NULL,
+      `display_name` varchar(150) DEFAULT NULL,
+      `password_hash` varchar(255) NOT NULL,
+      `is_enabled` tinyint(1) NOT NULL DEFAULT '1',
+      `last_login_at` datetime DEFAULT NULL,
+      `created_at` datetime NOT NULL,
+      PRIMARY KEY (`id`),
+      UNIQUE KEY `uk_app_user_username` (`username`),
+      UNIQUE KEY `uk_app_user_email` (`email`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+    """CREATE TABLE IF NOT EXISTS `app_user_security_group` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `user_id` int(11) NOT NULL,
+      `group_id` varchar(50) NOT NULL,
+      `from_date` datetime NOT NULL,
+      `thru_date` datetime DEFAULT NULL,
+      PRIMARY KEY (`id`),
+      KEY `idx_ausg_user` (`user_id`),
+      CONSTRAINT `fk_ausg_user` FOREIGN KEY (`user_id`) REFERENCES `app_user` (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+]
+
 
 class Migration(migrations.Migration):
 
@@ -12,6 +40,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunSQL(CREATE_TABLES, migrations.RunSQL.noop),
         migrations.CreateModel(
             name='AppUser',
             fields=[

@@ -1,4 +1,5 @@
-"""Test the live Jira Cloud and Bitbucket Cloud connections with the credentials in .env, read-only.
+"""Test the live Jira Cloud and Bitbucket Cloud connections, read-only, with the credentials saved on
+Settings → Integrations (or, where none are saved there, the ones in .env).
 
     .venv\\Scripts\\python manage.py check_integrations            # both
     .venv\\Scripts\\python manage.py check_integrations --jira     # Jira only
@@ -11,7 +12,7 @@ Only read calls are made. Jira and Bitbucket are checked separately: a working J
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
-from integrations import bitbucket_client, jira_client
+from integrations import bitbucket_client, credentials, jira_client
 from integrations.bitbucket_client import BitbucketClient
 from integrations.http import IntegrationError, NotFoundUpstream
 from integrations.jira_client import JiraClient
@@ -24,7 +25,7 @@ def status(exc) -> str:
 
 
 class Command(BaseCommand):
-    help = "Read-only test of the Jira and Bitbucket connections configured in .env (secrets are never printed)."
+    help = "Read-only test of the configured Jira and Bitbucket connections (secrets are never printed)."
 
     def add_arguments(self, parser):
         parser.add_argument("--jira", action="store_true", help="Check Jira only.")
@@ -43,7 +44,7 @@ class Command(BaseCommand):
     # ---- output helpers ----
 
     def setting(self, name, optional=False):
-        value = getattr(settings, name)
+        value = credentials.get(name) if name in credentials.NAMES else getattr(settings, name)
         if name in SECRET_SETTINGS:
             shown = f"set ({len(value)} characters)" if value else "MISSING"
         elif isinstance(value, list):

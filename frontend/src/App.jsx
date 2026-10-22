@@ -2,10 +2,11 @@ import { useState } from 'react';
 import AccessGate from './components/AccessGate';
 import AppSidebar from './components/AppSidebar';
 import SiteHeader from './components/SiteHeader';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { useLocation } from './lib/router';
 import AuditLogPage from './pages/AuditLogPage';
 import BitbucketPage from './pages/BitbucketPage';
+import ChangePasswordPage from './pages/ChangePasswordPage';
 import CommitsPage from './pages/CommitsPage';
 import DashboardPage from './pages/DashboardPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
@@ -29,6 +30,11 @@ function Gated({ allowed, path, title, children }) {
 }
 
 function CurrentPage({ pathname, search }) {
+  const { user } = useAuth();
+  // The default admin account must choose its own password before anything else.
+  if (user?.mustChangePassword) {
+    return <ChangePasswordPage />;
+  }
   switch (pathname) {
     case '/login':
       return <LoginPage search={search} />;

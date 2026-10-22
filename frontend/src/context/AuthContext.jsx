@@ -33,6 +33,7 @@ export function AuthProvider({ children }) {
       register: (email, password, displayName) =>
         authService.register(email, password, displayName).then(startSession),
       resetPassword: (token, password) => authService.resetPassword(token, password).then(startSession),
+      changePassword: (current, password) => authService.changePassword(current, password).then(startSession),
       logout: () => {
         authService.logout();
         setToken(null);

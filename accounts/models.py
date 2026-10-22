@@ -74,6 +74,10 @@ class AppUser(AbstractBaseUser):
     def can_view_jira(self) -> bool:
         return bool(self.active_groups() & {ADMIN_GROUP_ID, JIRA_VIEWER_GROUP_ID})
 
+    @property
+    def must_change_password(self) -> bool:
+        return bool(self.pk) and PasswordChangeRequired.objects.filter(user_id=self.pk).exists()
+
     def set_group(self, group_id: str, member: bool) -> bool:
         """Grant (new row) or revoke (set thru_date), like OFBiz UserLoginSecurityGroup. True if changed."""
         now = timezone.now()
@@ -101,7 +105,8 @@ class AppUser(AbstractBaseUser):
 
     @property
     def is_staff(self) -> bool:
-        return self.is_active and self.is_admin
+        # Not before the default admin has replaced its well-known password.
+        return self.is_active and self.is_admin and not self.must_change_password
 
     @property
     def is_superuser(self) -> bool:
@@ -150,6 +155,18 @@ class UserTokenCutoff(models.Model):
     class Meta:
         db_table = "user_token_cutoff"
         verbose_name = "sign-in token cutoff"
+
+
+class PasswordChangeRequired(models.Model):
+    """This user must choose a new password before anything else works: set on the default admin account
+    (manage.py setup), cleared by changing or resetting the password."""
+    user = models.OneToOneField(AppUser, on_delete=models.CASCADE, primary_key=True, db_constraint=False,
+                                related_name="+", db_column="user_id")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "password_change_required"
+        verbose_name = "required password change"
 
 
 class RevokedToken(models.Model):

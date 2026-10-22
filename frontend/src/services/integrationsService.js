@@ -41,3 +41,8 @@ export const getCommits = (slug, { branch, page = 1, limit = 25 } = {}) =>
   apiFetch(`${repoUrl(slug)}/commits${query({ branch, page, limit })}`);
 export const getPullRequests = (slug, { state, branch, page = 1, limit = 25 } = {}) =>
   apiFetch(`${repoUrl(slug)}/pullrequests${query({ state, branch, page, limit })}`);
+
+// Admins: the Jira / Bitbucket accounts and tokens. Tokens are never returned, only whether they are set.
+export const getCredentials = () => apiFetch(`${BASE}/credentials`);
+// { jiraBaseUrl: '...', jiraApiToken: '...' }: only the settings to change; '' or null removes a saved value.
+export const saveCredentials = (changes) => apiFetch(`${BASE}/credentials`, { method: 'PUT', json: changes });

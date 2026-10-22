@@ -197,3 +197,59 @@ class LogoutTests(AuthApiTestCase):
         self.assertEqual(self.post(api.logout_everywhere, user=FakeUser(id=9), token="t").status_code, 204)
         self.revoke_all.assert_called_once_with(9)
         self.assertEqual(self.post(api.logout_everywhere).status_code, 401)
+
+
+class ChangePasswordTests(AuthApiTestCase):
+    def setUp(self):
+        super().setUp()
+        mock.patch.object(api.PasswordResetThrottle, "THROTTLE_RATES", {"password_reset": "1000/hour"}).start()
+        self.required = mock.patch("accounts.api.PasswordChangeRequired.objects").start()
+        mock.patch("accounts.api._start_session", return_value={"token": "new"}).start()
+        mock.patch("accounts.api.transaction.atomic").start()
+        self.user = mock.Mock(id=3, is_authenticated=True, check_password=lambda raw: raw == "admin")
+
+    def change(self, current, new):
+        return self.post(api.change_password, {"currentPassword": current, "newPassword": new}, user=self.user)
+
+    def test_wrong_current_password_or_short_new_one_is_refused(self):
+        self.assertEqual(self.change("guess", "a new password").status_code, 400)
+        self.assertEqual(self.change("admin", "short").status_code, 400)
+        self.user.set_password.assert_not_called()
+
+    def test_change_clears_the_requirement_and_signs_in_again(self):
+        response = self.change("admin", "a new password")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data, {"token": "new"})
+        self.user.set_password.assert_called_once_with("a new password")
+        self.required.filter.assert_called_once_with(user_id=3)
+        self.assertEqual(self.audit.call_args.args[1], "PASSWORD_CHANGE")
+
+    def test_signed_out_gets_401(self):
+        self.assertEqual(self.post(api.change_password, {"currentPassword": "a", "newPassword": "b" * 8}).status_code, 401)
+
+
+class PasswordChangeGateTests(SimpleTestCase):
+    """A user who must change their password reaches only the endpoints needed to do it."""
+
+    def setUp(self):
+        from .authentication import BearerTokenAuthentication
+        self.auth = BearerTokenAuthentication()
+        mock.patch("accounts.authentication.read_token", return_value=3).start()
+        self.user = mock.Mock(is_active=True, must_change_password=True)
+        mock.patch("accounts.authentication.AppUser.objects.filter").start().return_value.first.return_value = self.user
+        self.addCleanup(mock.patch.stopall)
+
+    def authenticate(self, path):
+        return self.auth.authenticate(APIRequestFactory().get(path, HTTP_AUTHORIZATION="Bearer t"))
+
+    def test_only_the_password_change_endpoints_are_open(self):
+        for path in ("/api/auth/me", "/api/auth/change-password", "/api/auth/logout"):
+            self.assertEqual(self.authenticate(path), (self.user, "t"))
+        from rest_framework.exceptions import PermissionDenied
+        for path in ("/api/releases", "/api/admin/users", "/api/integrations/credentials"):
+            with self.assertRaises(PermissionDenied):
+                self.authenticate(path)
+
+    def test_everything_is_open_after_the_change(self):
+        self.user.must_change_password = False
+        self.assertEqual(self.authenticate("/api/admin/users"), (self.user, "t"))

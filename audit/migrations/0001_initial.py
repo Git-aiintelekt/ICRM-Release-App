@@ -3,6 +3,26 @@
 import django.utils.timezone
 from django.db import migrations, models
 
+# The tables come from the original app and stay unmanaged (Django never alters them). On an empty
+# database these statements create them; on an existing one IF NOT EXISTS leaves them untouched.
+CREATE_TABLES = [
+    """CREATE TABLE IF NOT EXISTS `audit_log` (
+      `id` bigint(20) NOT NULL AUTO_INCREMENT,
+      `user_id` int(11) DEFAULT NULL,
+      `username` varchar(100) DEFAULT NULL,
+      `action` varchar(40) NOT NULL,
+      `target` varchar(255) DEFAULT NULL,
+      `details` varchar(500) DEFAULT NULL,
+      `ip_address` varchar(45) DEFAULT NULL,
+      `user_agent` varchar(255) DEFAULT NULL,
+      `created_at` datetime NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `idx_audit_created` (`created_at`),
+      KEY `idx_audit_user` (`user_id`,`created_at`),
+      KEY `idx_audit_action` (`action`,`created_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+]
+
 
 class Migration(migrations.Migration):
 
@@ -12,6 +32,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunSQL(CREATE_TABLES, migrations.RunSQL.noop),
         migrations.CreateModel(
             name='AuditLog',
             fields=[

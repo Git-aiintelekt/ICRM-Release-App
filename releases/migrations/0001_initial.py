@@ -3,15 +3,85 @@
 import django.utils.timezone
 from django.db import migrations, models
 
+# The tables come from the original app and stay unmanaged (Django never alters them). On an empty
+# database these statements create them; on an existing one IF NOT EXISTS leaves them untouched.
+CREATE_TABLES = [
+    """CREATE TABLE IF NOT EXISTS `release_version` (
+      `id` bigint(20) NOT NULL AUTO_INCREMENT,
+      `version` varchar(50) NOT NULL,
+      `release_date` date NOT NULL,
+      `description` varchar(1000) NOT NULL,
+      `is_latest` tinyint(1) NOT NULL DEFAULT '0',
+      `status` varchar(20) NOT NULL DEFAULT 'RELEASED',
+      `planned_label` varchar(100) DEFAULT NULL,
+      `highlights` text,
+      `known_issues` text,
+      `upgrade_notes` text,
+      `edited_at` datetime DEFAULT NULL,
+      `created_at` datetime NOT NULL,
+      `updated_at` datetime NOT NULL,
+      PRIMARY KEY (`id`),
+      UNIQUE KEY `uk_release_version_version` (`version`),
+      KEY `idx_release_version_release_date` (`release_date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+    """CREATE TABLE IF NOT EXISTS `release_item` (
+      `id` bigint(20) NOT NULL AUTO_INCREMENT,
+      `release_version_id` bigint(20) NOT NULL,
+      `category` varchar(50) NOT NULL,
+      `title` varchar(500) NOT NULL,
+      `description` varchar(1000) DEFAULT NULL,
+      `jira_id` varchar(20) DEFAULT NULL,
+      `display_order` int(11) NOT NULL DEFAULT '0',
+      `edited_at` datetime DEFAULT NULL,
+      `created_at` datetime NOT NULL,
+      `updated_at` datetime NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `idx_release_item_release_version_id` (`release_version_id`),
+      KEY `idx_release_item_category` (`category`),
+      CONSTRAINT `fk_release_item_release_version` FOREIGN KEY (`release_version_id`) REFERENCES `release_version` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+    """CREATE TABLE IF NOT EXISTS `release_image` (
+      `id` bigint(20) NOT NULL AUTO_INCREMENT,
+      `release_version_id` bigint(20) NOT NULL,
+      `release_item_id` bigint(20) DEFAULT NULL,
+      `file_name` varchar(100) NOT NULL,
+      `content_type` varchar(50) NOT NULL,
+      `caption` varchar(255) DEFAULT NULL,
+      `display_order` int(11) NOT NULL DEFAULT '0',
+      `created_at` datetime NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `idx_release_image_version` (`release_version_id`),
+      KEY `idx_release_image_item` (`release_item_id`),
+      CONSTRAINT `fk_ri_item` FOREIGN KEY (`release_item_id`) REFERENCES `release_item` (`id`) ON DELETE CASCADE,
+      CONSTRAINT `fk_ri_version` FOREIGN KEY (`release_version_id`) REFERENCES `release_version` (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+    """CREATE TABLE IF NOT EXISTS `release_upload` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `release_version_id` bigint(20) NOT NULL,
+      `file_name` varchar(255) NOT NULL,
+      `item_count` int(11) NOT NULL,
+      `mode` varchar(20) NOT NULL,
+      `uploaded_by` int(11) NOT NULL,
+      `uploaded_at` datetime NOT NULL,
+      PRIMARY KEY (`id`),
+      KEY `idx_release_upload_version` (`release_version_id`),
+      KEY `fk_ru_user` (`uploaded_by`),
+      CONSTRAINT `fk_ru_user` FOREIGN KEY (`uploaded_by`) REFERENCES `app_user` (`id`),
+      CONSTRAINT `fk_ru_version` FOREIGN KEY (`release_version_id`) REFERENCES `release_version` (`id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8""",
+]
+
 
 class Migration(migrations.Migration):
 
     initial = True
 
     dependencies = [
+        ('accounts', '0001_initial'),  # release_upload.uploaded_by references app_user
     ]
 
     operations = [
+        migrations.RunSQL(CREATE_TABLES, migrations.RunSQL.noop),
         migrations.CreateModel(
             name='ReleaseImage',
             fields=[

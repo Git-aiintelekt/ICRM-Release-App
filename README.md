@@ -46,9 +46,14 @@ cd ICRM-Release-App
    ```powershell
    .venv\Scripts\python manage.py check
    ```
-5. **Database tables**: only on a new, empty database. `react_database` already has them.
+5. **Database tables.** Safe on any database: on an empty one it creates every table, and on `react_database` it
+   adds only what is missing and leaves existing tables and data untouched.
    ```powershell
-   .venv\Scripts\python manage.py migrate   # creates Django's own tables; existing tables untouched
+   .venv\Scripts\python manage.py migrate
+   ```
+6. **First admin** (only on an empty database, which has no users yet). Enter your email as the username.
+   ```powershell
+   .venv\Scripts\python manage.py createsuperuser
    ```
 
 ### Every time
@@ -96,7 +101,9 @@ audit log refer to them.
 ## Database
 
 **Database:** `react_database` on `localhost:3306` (set by `DB_*` in `.env`). **Every existing table is used as it is:**
-the Django models are `managed = False` and use `db_table`, so Django never creates, alters or drops them.
+the Django models are `managed = False` and use `db_table`, so Django never alters or drops them. On an empty
+database, `migrate` creates them (`CREATE TABLE IF NOT EXISTS` in each app's `0001_initial`, with the same columns
+and keys as the original tables).
 
 | Existing table | Django model | Admin |
 |---|---|---|

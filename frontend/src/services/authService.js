@@ -28,6 +28,11 @@ export function resetPassword(token, password) {
   return apiFetch('/api/auth/reset-password', { method: 'POST', json: { token, password } });
 }
 
+// Signed in: replace the password (required first for the default admin). Returns a new { token, user }.
+export function changePassword(currentPassword, newPassword) {
+  return apiFetch('/api/auth/change-password', { method: 'POST', json: { currentPassword, newPassword } });
+}
+
 // Ends the Django session too (the one Django Admin uses); the sign-in token is dropped by the caller.
 export function logout() {
   return apiFetch('/api/auth/logout', { method: 'POST' }).catch(() => null);

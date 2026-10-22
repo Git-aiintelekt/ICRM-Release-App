@@ -4,6 +4,8 @@ Reading: FULLADMIN or JIRA_VIEWER (the same rule, and the same audited denial, a
 Refreshing the cache: FULLADMIN, audited as INTEGRATION_REFRESH.
 Scope: FULLADMIN can limit every screen to chosen Bitbucket branches (per repository) and Jira fix versions
 (POST/DELETE /api/integrations/scope, audited as INTEGRATION_SCOPE). Requests for anything outside it get a 400.
+Connection settings: FULLADMIN enters the Jira / Bitbucket URL, accounts and tokens (GET/PUT
+/api/integrations/credentials, audited as INTEGRATION_SETTINGS); tokens are never sent back.
 Failures of one service come back as {"detail": "..."} with 400/404/502/503; the dashboard reports each section
 separately, so one service being down doesn't hide the other.
 """
@@ -22,7 +24,7 @@ from config.api import IsAdmin
 from jira.api import JiraAccess
 from releases.models import ReleaseVersion
 
-from . import bitbucket_client, cache, jira_client, scope
+from . import bitbucket_client, cache, credentials, jira_client, scope
 from .bitbucket_client import BRANCH_RE, SLUG_RE, BitbucketClient
 from .http import IntegrationError, NotFoundUpstream
 from .jira_client import PROJECT_KEY_RE, JiraClient
@@ -91,10 +93,10 @@ def status_json(sc=None) -> dict:
     sc = sc or scope.current()
     return {
         "scope": sc,
-        "jira": {**_service_status(jira_client, jira_client.SERVICE), "baseUrl": settings.JIRA_BASE_URL or None,
+        "jira": {**_service_status(jira_client, jira_client.SERVICE), "baseUrl": credentials.get("JIRA_BASE_URL") or None,
                  "projectKeys": jira_client.project_keys(), "baseProjectKeys": jira_client.base_project_keys()},
         "bitbucket": {**_service_status(bitbucket_client, bitbucket_client.SERVICE),
-                      "workspace": settings.BITBUCKET_WORKSPACE or None, "repositories": bitbucket_client.repositories(),
+                      "workspace": credentials.get("BITBUCKET_WORKSPACE") or None, "repositories": bitbucket_client.repositories(),
                       "baseRepositories": bitbucket_client.base_repositories()},
         "cacheSeconds": settings.INTEGRATION_CACHE_SECONDS,
     }
@@ -223,7 +225,7 @@ def with_jira_status(items: list[dict]) -> tuple[list[dict], str | None]:
             return {k: found[key][k] for k in ("key", "summary", "status", "statusCategory", "issueType", "url")}
         # Unknown: either Jira wasn't asked (warning set) or it has no such issue visible to this account.
         return {"key": key, "summary": None, "status": None, "statusCategory": None, "issueType": None,
-                "url": jira_client.browse_url(key) if settings.JIRA_BASE_URL else None, "notFound": warning is None}
+                "url": jira_client.browse_url(key) if credentials.get("JIRA_BASE_URL") else None, "notFound": warning is None}
 
     for item in items:
         item["jiraIssues"] = [linked(key) for key in item["jiraKeys"]]
@@ -450,3 +452,61 @@ def scope_remove(request, scope_id):
         _drop_branches(row.value)
     row.delete()
     return _scope_changed(request, row, "removed")
+
+
+# ---- connection settings (Jira / Bitbucket accounts and tokens) ----
+
+URL_RE = re.compile(r"^https://[^\s/?#]+(/[^\s?#]*)?$")
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+SECRET_RE = re.compile(r"^\S{1,4096}$")
+CREDENTIAL_RULES = {
+    "JIRA_BASE_URL": (URL_RE, "Use the site address, e.g. https://your-site.atlassian.net"),
+    "JIRA_EMAIL": (EMAIL_RE, "Use the email of the Atlassian account."),
+    "BITBUCKET_WORKSPACE": (SLUG_RE, "Use the workspace ID from the Bitbucket URL (letters, digits, . _ -)."),
+    "BITBUCKET_EMAIL": (EMAIL_RE, "Use the email of the Atlassian account."),
+}
+
+
+def credentials_json() -> list[dict]:
+    """Each setting, where its value comes from, and the value itself except for secrets."""
+    return [{"name": name, "label": label, "secret": secret, "source": credentials.source(name),
+             "value": None if secret else (credentials.get(name) or None)}
+            for name, label, secret in credentials.FIELDS]
+
+
+class CredentialsSerializer(serializers.Serializer):
+    """Each setting is optional: left out = unchanged, empty or null = remove the app value (back to .env)."""
+
+    def get_fields(self):
+        return {name.lower(): serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=4096)
+                for name in credentials.NAMES}
+
+    def validate(self, data):
+        errors = {}
+        for key, value in data.items():
+            name = key.upper()
+            if not value:
+                continue
+            pattern, message = CREDENTIAL_RULES.get(name, (SECRET_RE, "Paste the token without spaces."))
+            if len(value) > (200 if name == "JIRA_BASE_URL" else 191 if name.endswith("EMAIL") else 4096)                     or not pattern.match(value):
+                errors[key] = message
+        if errors:
+            raise serializers.ValidationError(errors)
+        return {key.upper(): (value or "").rstrip("/") if key == "jira_base_url" else value or ""
+                for key, value in data.items()}
+
+
+@api_view(["GET", "PUT"])
+@permission_classes([IsAdmin])
+def credentials_settings(request):
+    if request.method == "GET":
+        return Response({"fields": credentials_json()})
+    s = CredentialsSerializer(data=request.data)
+    s.is_valid(raise_exception=True)
+    changed = credentials.save(s.validated_data, request.user)
+    if changed:
+        cache.invalidate()  # answers fetched with the old account must not be shown any more
+        # Names only: values, and tokens above all, stay out of the audit log.
+        record(request, audit.INTEGRATION_SETTINGS, request.user, target="integrations",
+               details="changed " + ", ".join(changed))
+    return Response({"fields": credentials_json(), "status": status_json()})

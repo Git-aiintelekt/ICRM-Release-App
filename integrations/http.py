@@ -101,7 +101,7 @@ def request_json(service: str, method: str, url: str, *, auth: str, params=None,
                     continue
                 raise RateLimited(f"{service} is rate limiting requests. Try again in a minute.", upstream_status=429)
             if status == 401:
-                raise AuthFailed(f"{service} rejected the credentials. Check the {service} settings in .env.", upstream_status=401)
+                raise AuthFailed(f"{service} rejected the credentials. Check the {service} connection on Settings → Integrations.", upstream_status=401)
             if status == 403:
                 raise AuthFailed(
                     f"{service} denied access. The configured account or token lacks permission for this data.",

@@ -38,3 +38,19 @@ class IntegrationScope(models.Model):
 
     def __str__(self):
         return f"{self.repository}:{self.value}" if self.repository else self.value
+
+
+class IntegrationCredential(models.Model):
+    """A Jira / Bitbucket connection setting entered on Settings → Integrations (new table integration_credential).
+    It takes the place of the .env value of the same name. Every value is encrypted (integrations/credentials.py)."""
+    name = models.CharField(max_length=40, primary_key=True)
+    encrypted_value = models.TextField()
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   db_constraint=False, related_name="+")
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "integration_credential"
+
+    def __str__(self):
+        return self.name

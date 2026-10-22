@@ -42,19 +42,17 @@ cd ICRM-Release-App
    npm run build
    cd ..
    ```
-4. **Check the setup.** It should print `System check identified no issues`.
-   ```powershell
-   .venv\Scripts\python manage.py check
-   ```
-5. **Database tables.** Safe on any database: on an empty one it creates every table, and on `react_database` it
-   adds only what is missing and leaves existing tables and data untouched.
-   ```powershell
-   .venv\Scripts\python manage.py migrate
-   ```
-6. **First admin** (only on an empty database, which has no users yet). Enter your email as the username.
-   ```powershell
-   .venv\Scripts\python manage.py createsuperuser
-   ```
+4. **Start it** (see *Every time* below). MySQL must be running; nothing else needs preparing. On start, Django
+   runs `manage.py setup`, which:
+   - creates the database named in `DB_NAME` if it doesn't exist,
+   - creates every table (`migrate`; on an existing database it adds only what is missing, data untouched),
+   - creates the default admin **`admin` / `admin`** when there are no users yet.
+
+   Sign in as `admin` / `admin`: the app asks for a new password before anything else works (Django Admin stays
+   closed to the account until then). Then connect Jira and Bitbucket on **Settings → Integrations**.
+
+   On a server started with waitress instead of `runserver`, run `.venv\Scripts\python manage.py setup` once after
+   each deployment.
 
 ### Every time
 
@@ -70,7 +68,7 @@ Open http://localhost:8000. Stop with `Ctrl+C`. If port 8000 is in use, run `run
 |---|---|
 | Files in `frontend\` | `cd frontend; npm run build; cd ..` (`npm ci` first if `package.json` changed) |
 | `requirements.txt` | `.venv\Scripts\pip install -r requirements.txt` |
-| New files in `*/migrations/` | `.venv\Scripts\python manage.py migrate` |
+| New files in `*/migrations/` | Nothing with `runserver` (it runs `setup`); on a waitress server `manage.py setup` |
 | Only other Python files | Nothing, just restart the server |
 
 - React app: http://localhost:8000 (left sidebar: dashboard, release notes, Jira, Bitbucket, commits & PRs, audit logs,
@@ -148,6 +146,7 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 | `GET /api/releases`, `/api/releases/{id}`, `/api/releases/version/{v}` | `releases.api` | public |
 | `GET /api/release-images/{id}` | `releases.api.release_image` | public |
 | `POST /api/auth/register`, `/login`, `/forgot-password`, `/reset-password`; `GET /api/auth/me` | `accounts.api` | public / signed in |
+| (new) `POST /api/auth/change-password` | `accounts.api.change_password` | signed in, audited as `PASSWORD_CHANGE` |
 | (new) `POST /api/auth/logout` | `accounts.api.logout` | ends the Django Admin session too |
 | `GET /api/jira-issues`, `/api/jira-issues/{id}` | `jira.api` | FULLADMIN or JIRA_VIEWER, audited |
 | `POST /api/admin/releases/parse`, `POST /api/admin/releases` | `releases.api.parse_upload`, `publish` | FULLADMIN |
@@ -159,6 +158,7 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 | `GET/POST/DELETE /api/messages` | not ported (unused demo) | |
 | `GET /api/integrations/status`, `/dashboard`, `/jira/{filters,summary,issues,releases}`, `/bitbucket/repositories[/{slug}/{branches,commits,pullrequests}]` | `integrations.api` | FULLADMIN or JIRA_VIEWER (denials audited) |
 | `POST /api/integrations/refresh` | `integrations.api.refresh` | FULLADMIN, audited as `INTEGRATION_REFRESH` |
+| `GET/PUT /api/integrations/credentials` (tokens are never returned) | `integrations.api.credentials_settings` | FULLADMIN, changes audited as `INTEGRATION_SETTINGS` (names only) |
 
 ## Sign-in security
 
@@ -168,6 +168,7 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 | Account lockout | After 5 failed sign-ins to one account (from any IP) its sign-in is refused for 15 minutes, audited as a failed sign-in with "locked". A password reset unlocks it | `LOGIN_LOCKOUT_ATTEMPTS`, `LOGIN_LOCKOUT_SECONDS` |
 | Sign out | **Sign out** ends that device's token at once (`revoked_token`). **Sign out everywhere** (header) ends every device's (`user_token_cutoff`), audited as `LOGOUT_EVERYWHERE` | |
 | Password change, disabled account | A password change (reset link, Django Admin, `changepassword`) and disabling an account end every earlier sign-in | |
+| Default admin | `manage.py setup` creates `admin` / `admin` only when there are no users. Until its password is changed the API answers 403 to everything except `/api/auth/me`, `/change-password` and the sign-outs, and Django Admin refuses the account (`password_change_required`) | |
 | Self sign-up | Limited to `@aiintelekt.com` addresses by default; can be switched off (the sign-in page then says to ask an administrator) | `ALLOW_REGISTRATION`, `REGISTRATION_EMAIL_DOMAINS` (empty = any domain) |
 | Content Security Policy | Report-only: browsers log what it would block in the developer console. Before enforcing it, move the inline theme script in `frontend/index.html` into a file | `CSP_ENFORCE=true` |
 | Health check | `GET /api/health`: 200 `{"status": "ok"}` or 503 when the database doesn't answer, for the reverse proxy and uptime monitors | |
@@ -179,11 +180,14 @@ until the user's next password change or "Sign out everywhere"; signing out of p
 ## Jira and Bitbucket (live data)
 
 The Dashboard, Jira Tickets (Live tab), Bitbucket Repositories and Commits & Pull Requests pages read Jira Cloud
-(REST v3) and Bitbucket Cloud (API 2.0) **through Django** (`integrations/`). Tokens live only in `.env`; no response
-contains them. Without credentials each page says which `.env` values are missing, and the rest of the app is unaffected.
+(REST v3) and Bitbucket Cloud (API 2.0) **through Django** (`integrations/`). Tokens stay on the server; no response
+contains them. Without credentials each page says which settings are missing, and the rest of the app is unaffected.
 
-- **Configure:** fill the `JIRA_*` and `BITBUCKET_*` block of `.env` (see `.env.example`), restart Django, then
-  Settings → Integrations → *Refresh and test connections*.
+- **Configure:** an admin enters the Jira site URL, account email and API token, and the Bitbucket workspace, account
+  email and API token (or an access token), on **Settings → Integrations → Jira and Bitbucket connection**, then
+  *Refresh and test connections*. These are saved in `integration_credential`, encrypted with a key derived from
+  `APP_SECRET_KEY` (changing that key makes them unreadable: enter them again). A saved token is never shown again.
+  Anything not saved there is read from the `JIRA_*` / `BITBUCKET_*` values in `.env`, which still work as before.
 - **Counts:** open = status category not Done; resolved / closed = Done **and** a status in `JIRA_RESOLVED_STATUSES` /
   `JIRA_CLOSED_STATUSES` (anything else Done is shown as "other done"); bugs = `JIRA_BUG_ISSUE_TYPES`. Configured names
   that don't exist in the projects are ignored and reported, never sent in JQL.
@@ -200,8 +204,8 @@ contains them. Without credentials each page says which `.env` values are missin
   those versions (this overrides `JIRA_FIX_VERSION_MAP`). It applies to every user; with nothing added, everything is
   shown. Each name is checked against Bitbucket / Jira before it's saved, and changes are audited as `INTEGRATION_SCOPE`.
 - **Caching:** answers are kept in memory for `INTEGRATION_CACHE_SECONDS` (default 300); the dashboard is one request.
-  Nothing from Jira or Bitbucket is copied into the database. The only table is `integration_scope` (the scope above,
-  created by `manage.py migrate`).
+  Nothing from Jira or Bitbucket is copied into the database. The tables are `integration_scope` (the scope above) and
+  `integration_credential` (the connection settings), both created by `manage.py setup` / `migrate`.
 
 ## Email
 

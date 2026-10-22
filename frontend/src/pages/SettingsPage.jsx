@@ -21,6 +21,8 @@ const ACTION_LABELS = {
   INTEGRATION_REFRESH: 'Refreshed integrations',
   INTEGRATION_SCOPE: 'Changed integration scope',
   LOGOUT_EVERYWHERE: 'Signed out everywhere',
+  PASSWORD_CHANGE: 'Changed password',
+  INTEGRATION_SETTINGS: 'Changed connection settings',
 };
 
 const ACTION_FILTERS = [
@@ -41,6 +43,8 @@ const ACTION_FILTERS = [
   { value: 'INTEGRATION_REFRESH', label: 'Integration refreshes' },
   { value: 'INTEGRATION_SCOPE', label: 'Integration scope changes' },
   { value: 'LOGOUT_EVERYWHERE', label: 'Signed out everywhere' },
+  { value: 'PASSWORD_CHANGE', label: 'Password changes' },
+  { value: 'INTEGRATION_SETTINGS', label: 'Connection settings changes' },
 ];
 
 const PAGE_SIZE = 50;

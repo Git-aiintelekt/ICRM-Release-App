@@ -29,6 +29,7 @@ api = [
     path("auth/me", accounts_api.me),
     path("auth/forgot-password", accounts_api.forgot_password),
     path("auth/reset-password", accounts_api.reset_password),
+    path("auth/change-password", accounts_api.change_password),
     path("jira-issues", jira_api.list_issues),
     path("jira-issues/<str:jira_id>", jira_api.issue_detail),
     path("admin/releases/parse", releases_api.parse_upload),
@@ -48,6 +49,7 @@ api = [
     # Live Jira Cloud / Bitbucket Cloud data (integrations/api.py).
     path("integrations/status", integrations_api.status),
     path("integrations/refresh", integrations_api.refresh),
+    path("integrations/credentials", integrations_api.credentials_settings),
     path("integrations/scope", integrations_api.scope_add),
     path("integrations/scope/<int:scope_id>", integrations_api.scope_remove),
     path("integrations/dashboard", integrations_api.dashboard),

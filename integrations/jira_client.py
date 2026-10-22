@@ -12,7 +12,7 @@ from datetime import timedelta
 
 from django.conf import settings
 
-from . import cache, scope
+from . import cache, credentials, scope
 from .http import AuthFailed, BadQuery, NotConfigured, NotFoundUpstream, basic_auth, request_json
 
 SERVICE = "Jira"
@@ -42,12 +42,12 @@ def _cloud_id_ok() -> bool:
 
 
 def is_configured() -> bool:
-    return bool(settings.JIRA_BASE_URL and settings.JIRA_EMAIL and settings.JIRA_API_TOKEN and project_keys()
+    return bool(credentials.get("JIRA_BASE_URL") and credentials.get("JIRA_EMAIL") and credentials.get("JIRA_API_TOKEN") and project_keys()
                 and _cloud_id_ok())
 
 
 def missing_settings() -> list[str]:
-    missing = [name for name in ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN") if not getattr(settings, name)]
+    missing = [name for name in ("JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN") if not credentials.get(name)]
     if not project_keys():
         missing.append("JIRA_PROJECT_KEYS")
     if not _cloud_id_ok():
@@ -61,7 +61,7 @@ def uses_gateway() -> bool:
 
 def api_url() -> str:
     """REST root: the Atlassian API gateway for scoped tokens, else the site itself. Browse links always use the site."""
-    return f"{GATEWAY_URL}/{settings.JIRA_CLOUD_ID}" if uses_gateway() else settings.JIRA_BASE_URL
+    return f"{GATEWAY_URL}/{settings.JIRA_CLOUD_ID}" if uses_gateway() else credentials.get("JIRA_BASE_URL")
 
 
 def quote(value: str) -> str:
@@ -74,7 +74,7 @@ def jql_list(values) -> str:
 
 
 def browse_url(key: str) -> str:
-    return f"{settings.JIRA_BASE_URL}/browse/{key}"
+    return f"{credentials.get("JIRA_BASE_URL")}/browse/{key}"
 
 
 def parse_fix_version_map(text: str) -> dict[str, list[str]]:
@@ -123,7 +123,7 @@ class JiraClient:
     def _call(self, method, path, *, params=None, body=None):
         return request_json(
             SERVICE, method, f"{api_url()}{path}",
-            auth=basic_auth(settings.JIRA_EMAIL, settings.JIRA_API_TOKEN),
+            auth=basic_auth(credentials.get("JIRA_EMAIL"), credentials.get("JIRA_API_TOKEN")),
             params=params, body=body, opener=self.opener,
         )
 

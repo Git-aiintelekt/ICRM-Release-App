@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:ofbiz": "vite build --mode ofbiz",
     "lint": "oxlint",
     "preview": "vite preview"
   },

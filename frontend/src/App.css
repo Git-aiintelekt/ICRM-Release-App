@@ -2014,15 +2014,6 @@ textarea.input {
   }
 }
 
-/* ---------- OFBiz viewer ---------- */
-
-.viewer-package-info {
-  margin-top: 48px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
 /* ---------- App shell: left sidebar navigation ---------- */
 
 .site-header-app {

@@ -3,7 +3,7 @@
 Django 6.x supports MySQL 8.0.11+ only. The release-notes database runs on 5.5.62, so this backend
   * lowers the version check to 5.5, and
   * creates DATETIME / TIME columns without fractional seconds, which 5.5 doesn't have
-    (this only affects tables Django creates: its own tables and ofbiz_package).
+    (this only affects tables Django creates: its own tables).
 The existing release tables are unmanaged, so Django never alters them.
 
 Remove this backend (ENGINE = "django.db.backends.mysql") once the server is upgraded to MySQL 8.

@@ -1,26 +1,13 @@
 # iCRM Release Notes (Django)
 
-The Release Notes management app. Run it when you need to add or edit release notes. It builds a
-**versioned OFBiz component zip** that OFBiz serves on its own, read-only, with no Django or FastAPI running.
-
-```
-Django (run when editing)                      OFBiz (always running)
-  React UI  /  Django Admin                      hot-deploy-ext/release-notes/        <- the package
-       │ save                                      /release-notes/control/main (iCRM sign-in)
-  react_database (MySQL, existing tables)                │
-       │ Admin → OFBiz packages → Generate           main.ftl: releases embedded as JSON
-  packages/release-notes-10.12-20261001-1530.zip  + React viewer + screenshots (static)
-       │ Download → unzip into hot-deploy-ext/ ──────────┘
-```
-
-It replaced `python-backend` (FastAPI, now retired). It uses the **same database, tables, users and passwords**, and serves the
-**same React UI**.
+The Release Notes management app: add, edit, publish and email iCRM release notes.
+It replaced `python-backend` (FastAPI, now retired). It uses the **same database, tables, users and passwords**,
+and serves the **same React UI**.
 
 | | |
 |---|---|
 | Framework | Django 6.1, Django REST Framework, React 19 (Vite) |
 | Database | MySQL `react_database` (5.5.62) through a small compatibility backend, `config/db_backends/mysql55` |
-| Artifact | An **OFBiz component ZIP** (not a JAR or WAR, see [Why a component zip](#why-a-component-zip)) |
 
 ---
 
@@ -61,7 +48,7 @@ cd ICRM-Release-App
    ```
 5. **Database tables**: only on a new, empty database. `react_database` already has them.
    ```powershell
-   .venv\Scripts\python manage.py migrate   # creates Django's own tables + ofbiz_package; existing tables untouched
+   .venv\Scripts\python manage.py migrate   # creates Django's own tables; existing tables untouched
    ```
 
 ### Every time
@@ -84,16 +71,12 @@ Open http://localhost:8000. Stop with `Ctrl+C`. If port 8000 is in use, run `run
 - React app: http://localhost:8000 (left sidebar: dashboard, release notes, Jira, Bitbucket, commits & PRs, audit logs,
   import/export, settings / integrations)
 - Django Admin: http://localhost:8000/admin/ (switched off by default, see below)
-- OFBiz packages: http://localhost:8000/admin/ofbiz_package/ofbizpackage/ (part of Django Admin)
 
-**Django Admin is switched off by default.** `/admin/` (including the OFBiz packages page) returns 404, and the React
-app hides its links to it: the sidebar's **Administration** section and the **OFBiz package** button on Import / Export.
-The React app's own `/api/admin/...` endpoints are not affected. To switch it on, do both:
+**Django Admin is switched off by default.** `/admin/` returns 404, and the React app hides its links to it (the
+sidebar's **Administration** section). The React app's own `/api/admin/...` endpoints are not affected. To switch it on, do both:
 
 1. Server: set `ENABLE_DJANGO_ADMIN=true` in `.env` and restart Django.
 2. React app: set `SHOW_ADMIN_LINKS = true` in `frontend/src/lib/navigation.js`, then `cd frontend; npm run build`.
-
-While it's off, generate packages from the command line (`manage.py build_ofbiz_package`, see [Packaging](#packaging)).
 
 **Working on the React UI:** keep Django running, then in a second terminal run `cd frontend; npm run dev` and open
 http://localhost:5173. Vite reloads on every save and passes `/api`, `/admin` and `/static` through to Django on port 8000.
@@ -130,9 +113,8 @@ the Django models are `managed = False` and use `db_table`, so Django never crea
 | `messages` | not mapped (demo table, unused) | |
 
 **New tables** created by `python manage.py migrate`: Django's own (`django_migrations`, `django_session`,
-`django_admin_log`, `django_content_type`, `auth_permission`, `auth_group`, `auth_group_permissions`),
-**`ofbiz_package`** (history of generated packages), and **`revoked_token`** / **`user_token_cutoff`** (signed-out
-tokens, see [Sign-in security](#sign-in-security)).
+`django_admin_log`, `django_content_type`, `auth_permission`, `auth_group`, `auth_group_permissions`) and
+**`revoked_token`** / **`user_token_cutoff`** (signed-out tokens, see [Sign-in security](#sign-in-security)).
 
 ```powershell
 .venv\Scripts\python manage.py migrate                 # apply migrations
@@ -266,89 +248,7 @@ Microsoft 365 (aiintelekt.com mail):
 | What | Command | Output | When |
 |---|---|---|---|
 | React app served by Django | `cd frontend; npm run build` | `frontend/dist/` | after UI changes |
-| Read-only OFBiz viewer | `.venv\Scripts\python manage.py build_ofbiz_viewer` | `ofbiz_package/viewer_build/` (commit it) | after UI changes |
 | Django Admin static files (production only) | `.venv\Scripts\python manage.py collectstatic` | `staticfiles/` | after upgrading Django |
-
-`build_ofbiz_viewer` runs `npm run build:ofbiz` (Vite mode `ofbiz`) and copies the result. The viewer is the same React
-code with the editing, sign-in, upload, Jira and settings screens left out. It reads its data from the page instead of `/api`.
-Because `viewer_build/` is committed, a server that only generates packages doesn't need Node.js.
-
-## Packaging
-
-**Django Admin → OFBiz packages** (`/admin/ofbiz_package/ofbizpackage/`, FULLADMIN only; needs
-`ENABLE_DJANGO_ADMIN=true`, otherwise use the command line below):
-
-1. **Next package** shows the version the package is named after (the one marked **Latest**), every version with its
-   change count, and anything that blocks the build (a missing screenshot file, the viewer not built).
-2. **Generate OFBiz Package** builds the zip and records it (who, when, counts, SHA-256). This is audited as `OFBIZ_PACKAGE`.
-3. **Download OFBiz Package** saves the zip. Every package is kept and listed, so an older one can be downloaded and
-   deployed again.
-
-The same from the command line:
-
-```powershell
-.venv\Scripts\python manage.py build_ofbiz_package --check        # what it would contain
-.venv\Scripts\python manage.py build_ofbiz_package                # generate
-.venv\Scripts\python manage.py build_ofbiz_package --build-viewer # rebuild the viewer first
-```
-
-**Artifact:** `packages/release-notes-<latest version>-<YYYYMMDD-HHMM>.zip` (for example `release-notes-10.12-20261001-1530.zip`,
-about 320 KB). A second package in the same minute gets `-2`. It contains one folder, the OFBiz component:
-
-```
-release-notes/
-  ofbiz-component.xml                     two webapps: /release-notes and /release-notes-resource
-  README.md                               deploy steps for this package
-  package-manifest.json                   versions, counts, SHA-256 of every file
-  data/ReleaseNotesSeedData.xml           menu entry (OfbizComponentAccess) + RELEASE_NOTES_VIEW permission
-  widget/CommonScreens.xml                decorator for the shared iCRM sign-in screens
-  webapp/release-notes/WEB-INF/web.xml    ContextFilter + ControlServlet (like seed-portal)
-  webapp/release-notes/WEB-INF/controller.xml  request "main", auth="true", iCRM sign-in, externalLoginKey
-  webapp/release-notes/main.ftl           the page: viewer index.html + window.__RELEASE_NOTES__ (inside <#noparse>)
-  webapp/release-notes-resource/assets/   viewer js + css
-  webapp/release-notes-resource/images/   every screenshot
-```
-
-The release data lives in `main.ftl`, behind the iCRM sign-in. The resource webapp holds only code and screenshots,
-like every other iCRM `*-resource` webapp.
-
-### Why a component zip
-
-| Format | Fits? | Reason |
-|---|---|---|
-| JAR | no | Only for compiled Java. This component has none (like `seed-portal`), and OFBiz builds Java with Ant from `src/` |
-| WAR | no | OFBiz's Tomcat has `setAutoDeploy(false)` (`framework/catalina/.../CatalinaContainer.java:341`), so a dropped-in WAR is never loaded |
-| Plain static build | no | OFBiz has nowhere to serve loose files from, and they would bypass the iCRM sign-in |
-| **OFBiz component ZIP** | **yes** | The unit OFBiz loads. It goes in the empty `hot-deploy-ext/` and changes no existing OFBiz file |
-
-## OFBiz deployment
-
-OFBiz is at `D:\sharmi\base_icrm\icrm-base-framework-master` (OFBiz 14.12 era, Java 8, Ant).
-
-**First time:**
-
-```
-Download release-notes-<version>-<timestamp>.zip
-  ↓ unzip into <ofbiz>\hot-deploy-ext\          → hot-deploy-ext\release-notes\ofbiz-component.xml
-  ↓ hot-deploy-ext\component-load.xml: add  <load-component component-location="release-notes"/>
-  ↓ load the menu entry once:
-      Web Tools → Import (/webtools/control/EntityImport): paste data\ReleaseNotesSeedData.xml → Import
-      (or: ant load-file -Ddata-file=hot-deploy-ext/release-notes/data/ReleaseNotesSeedData.xml)
-  ↓ restart OFBiz (stopofbiz.sh / startofbiz.sh, or your usual way; no Java build needed)
-  ↓ iCRM → Release Notes, or https://<host>:<https-port>/release-notes/control/main
-```
-
-Full-access admins see **Release Notes** in the app menu straight away. For other users, grant `RELEASE_NOTES_VIEW`
-to their security groups in iCRM Admin (the menu hides components without a matching permission). Any signed-in
-user can open the page URL.
-
-**Updates:** replace `hot-deploy-ext\release-notes\` with the new zip's folder. No restart is needed: OFBiz reloads
-FTL templates every 10 s (`template.ftl.location.expireTime=10000` in `framework/base/config/cache.properties`),
-and static files are read from disk. Restart OFBiz if the page still shows old notes.
-
-**Staging / production OFBiz:** `hot-deploy-ext/` isn't git-ignored. Commit `hot-deploy-ext/release-notes/` and the
-`component-load.xml` line to the OFBiz repo, and the existing `deploy.sh` → `deploy_single.sh` pipeline delivers it.
-Load the seed data once per server.
 
 ## Editing workflow
 
@@ -356,12 +256,7 @@ Load the seed data once per server.
 Run Django (runserver locally, or the staging Django service)
   ↓ edit in the React UI (inline editing, .docx upload) or, when switched on, Django Admin
   ↓ saved to react_database immediately
-  ↓ manage.py build_ofbiz_package (or, with Django Admin on: Admin → OFBiz packages → Generate → Download)
-  ↓ replace hot-deploy-ext\release-notes\ in OFBiz with the zip's release-notes folder
-  ↓ open Release Notes in iCRM; the footer names the package it came from
 ```
-
-Mark the new version **Latest** (Admin or the React edit panel) before generating, so the package is named after it.
 
 ## Environments
 
@@ -374,8 +269,7 @@ Mark the new version **Latest** (Admin or the React edit panel) before generatin
 | Build steps | `npm run build` | `npm ci; npm run build` in `frontend/`, then `migrate` and `collectstatic` |
 | Email | printed in the console | SMTP (`SMTP_HOST` …) |
 
-Secrets live only in `.env`, which is git-ignored. `.env.example` lists every setting. OFBiz itself never needs the Django
-service: run it on staging only for editing.
+Secrets live only in `.env`, which is git-ignored. `.env.example` lists every setting.
 
 ## Testing
 
@@ -383,7 +277,6 @@ service: run it on staging only for editing.
 # Every API endpoint against the real database, inside a transaction that is rolled back (nothing is kept):
 .venv\Scripts\python manage.py shell -c "exec(open('scripts/smoke_api.py', encoding='utf-8').read())"
 .venv\Scripts\python manage.py check
-.venv\Scripts\python manage.py build_ofbiz_package --check
 # Unit tests: sign-in security, audit export, health, email, releases, and Jira/Bitbucket with MOCKED responses
 # (no network, no database):
 .venv\Scripts\python manage.py test
@@ -396,11 +289,6 @@ Verified during the migration (2026-09-30), against the real data (6 versions, 4
 - **Admin:** every page loads.
 - **API:** 41/41 checks passed. `/api/releases` matches python-backend's response.
 - **React through Django:** 16/16 browser checks passed (history, search, sign-in, inline edit, settings, Jira, one sign-in for Admin).
-- **Package:**
-  - checksums verified,
-  - `main.ftl` renders through OFBiz's own `freemarker-2.3.22.jar`,
-  - the viewer passed 15/15 checks with Django stopped.
-- **Full workflow** (Admin → add 10.12 → Generate → Download → deploy → 10.12 shown as Latest): 14/14 checks passed. The test data was removed afterwards.
 
 ## python-backend (retired)
 

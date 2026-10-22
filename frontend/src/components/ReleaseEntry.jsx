@@ -48,17 +48,21 @@ function ReleaseItemRow({ item, canEdit, onEdit, onDelete, busy }) {
       <div className="note-body">
         <p className="note-title">
           {item.title}
-          {item.jiraId && (
-            <a
-              className="jira-chip"
-              href={`${JIRA_BROWSE_URL}${item.jiraId}`}
-              target="_blank"
-              rel="noreferrer"
-              title={`Open ${item.jiraId} in Jira`}
-            >
-              {item.jiraId}
-            </a>
-          )}
+          {/* The Jira number links to Jira for the release manager (admin) only; others see it as plain text. */}
+          {item.jiraId &&
+            (canEdit ? (
+              <a
+                className="jira-chip"
+                href={`${JIRA_BROWSE_URL}${item.jiraId}`}
+                target="_blank"
+                rel="noreferrer"
+                title={`Open ${item.jiraId} in Jira`}
+              >
+                {item.jiraId}
+              </a>
+            ) : (
+              <span className="jira-chip jira-chip-plain">{item.jiraId}</span>
+            ))}
           {canEdit && (
             <>
               <button type="button" className="edit-chip" onClick={onEdit} disabled={busy} aria-label={`Edit ${item.title}`}>

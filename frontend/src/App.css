@@ -2670,3 +2670,9 @@ a.stat-card:hover {
   max-width: 420px;
   margin-bottom: 16px;
 }
+
+/* A Jira number shown without its link (users other than the release manager). */
+.jira-chip-plain:hover {
+  color: var(--text);
+  background: var(--code-bg);
+}

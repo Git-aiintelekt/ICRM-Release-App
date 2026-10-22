@@ -162,3 +162,30 @@ class CsvParserTests(SimpleTestCase):
         from .services.csv_parser import CsvParseError, parse_csv
         with self.assertRaises(CsvParseError):
             parse_csv(b"Version,Jira\n11.2,CT-1\n")
+
+
+class SignedInReadTests(SimpleTestCase):
+    """Release notes and their screenshots are for signed-in users only."""
+
+    factory = APIRequestFactory()
+
+    def test_release_list_needs_a_signed_in_user(self):
+        from releases import api
+        mock.patch("releases.api.all_releases_json", return_value=[]).start()
+        self.addCleanup(mock.patch.stopall)
+        self.assertEqual(api.list_releases(self.factory.get("/api/releases")).status_code, 401)
+        request = self.factory.get("/api/releases")
+        force_authenticate(request, user=FakeUser())
+        self.assertEqual(api.list_releases(request).status_code, 200)
+
+    def test_screenshot_needs_a_session_or_a_token(self):
+        from django.contrib.auth.models import AnonymousUser
+        from django.http import Http404
+        from releases import api
+        request = self.factory.get("/api/release-images/1")
+        request.user = AnonymousUser()
+        self.assertEqual(api.release_image(request, 1).status_code, 401)
+        request.user = mock.Mock(is_authenticated=True)
+        with mock.patch("releases.api.ReleaseImage.objects.filter") as images, self.assertRaises(Http404):
+            images.return_value.first.return_value = None
+            api.release_image(request, 1)

@@ -1,6 +1,6 @@
 """Release endpoints, same URLs and JSON as python-backend.
 
-Public:   GET /api/releases, /api/releases/<id>, /api/releases/version/<version>, /api/release-images/<id>
+Signed in: GET /api/releases, /api/releases/<id>, /api/releases/version/<version>, /api/release-images/<id>
 Admins:   POST /api/admin/releases/parse (read a .docx or .csv, save nothing), POST /api/admin/releases (publish),
           and the edit endpoints below; POST /api/admin/releases/<id>/items/import adds a CSV's changes to a version. Every edit returns the whole updated release.
           GET /api/admin/releases/<id>/notes-file and POST /api/admin/releases/<id>/email: one release's notes as an
@@ -13,14 +13,15 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max
 from django.http import FileResponse, Http404, HttpResponse
 from django.utils import timezone
-from rest_framework import serializers, status
+from rest_framework import exceptions, serializers, status
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from audit import models as audit
 from audit.service import record
-from config.api import CamelCaseJSONParser, IsAdmin, NotFound, bad_request, not_found
+from accounts.authentication import BearerTokenAuthentication
+from config.api import CamelCaseJSONParser, IsAdmin, IsSignedIn, NotFound, bad_request, not_found
 from config.mail import delivery_mode
 from integrations import release_generator
 
@@ -39,9 +40,10 @@ EXISTING_VERSION = ("Version {version} already exists. An upload can only add a 
                     "changes on the Release Notes page, or delete the whole version first and upload it again.")
 
 
-# ---- Public ----
+# ---- Signed in: every user who has signed in reads the release notes ----
 
 @api_view(["GET"])
+@permission_classes([IsSignedIn])
 def list_releases(request):
     return Response(all_releases_json())
 
@@ -55,23 +57,37 @@ def _release_or_404(**lookup) -> dict:
 
 
 @api_view(["GET"])
+@permission_classes([IsSignedIn])
 def release_by_id(request, release_id):
     return Response(_release_or_404(pk=release_id))
 
 
 @api_view(["GET"])
+@permission_classes([IsSignedIn])
 def release_by_version(request, version):
     return Response(_release_or_404(version=version))
 
 
+def _signed_in(request) -> bool:
+    """The Django session (what an <img> tag sends) or the app's Bearer token."""
+    if request.user.is_authenticated:
+        return True
+    try:
+        return BearerTokenAuthentication().authenticate(request) is not None
+    except exceptions.APIException:
+        return False
+
+
 def release_image(request, image_id):
-    """Screenshots are public, like the release notes they belong to."""
+    """Screenshots need a signed-in user, like the release notes they belong to."""
+    if not _signed_in(request):
+        return HttpResponse("Sign in to see this screenshot.", status=401, content_type="text/plain")
     image = ReleaseImage.objects.filter(pk=image_id).first()
     path = image_store.path_for(image.file_name) if image else None
     if path is None:
         raise Http404("Image not found.")
     response = FileResponse(open(path, "rb"), content_type=image.content_type)
-    response["Cache-Control"] = "public, max-age=86400"
+    response["Cache-Control"] = "private, max-age=86400"
     response["X-Content-Type-Options"] = "nosniff"
     return response
 

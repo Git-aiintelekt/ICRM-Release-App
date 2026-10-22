@@ -164,8 +164,8 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 
 | FastAPI endpoint | Django view | Access |
 |---|---|---|
-| `GET /api/releases`, `/api/releases/{id}`, `/api/releases/version/{v}` | `releases.api` | public |
-| `GET /api/release-images/{id}` | `releases.api.release_image` | public |
+| `GET /api/releases`, `/api/releases/{id}`, `/api/releases/version/{v}` | `releases.api` | signed in |
+| `GET /api/release-images/{id}` | `releases.api.release_image` | signed in (session cookie or token) |
 | `POST /api/auth/register`, `/login`, `/forgot-password`, `/reset-password`; `GET /api/auth/me` | `accounts.api` | public / signed in |
 | (new) `POST /api/auth/change-password` | `accounts.api.change_password` | signed in, audited as `PASSWORD_CHANGE` |
 | (new) `POST /api/auth/logout` | `accounts.api.logout` | ends the Django Admin session too |
@@ -190,6 +190,7 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 | Account lockout | After 5 failed sign-ins to one account (from any IP) its sign-in is refused for 15 minutes, audited as a failed sign-in with "locked". A password reset unlocks it | `LOGIN_LOCKOUT_ATTEMPTS`, `LOGIN_LOCKOUT_SECONDS` |
 | Sign out | **Sign out** ends that device's token at once (`revoked_token`). **Sign out everywhere** (header) ends every device's (`user_token_cutoff`), audited as `LOGOUT_EVERYWHERE` | |
 | Password change, disabled account | A password change (reset link, Django Admin, `changepassword`) and disabling an account end every earlier sign-in | |
+| Sign-in first | Every page opens on the sign-in form until the user has signed in; the release notes and screenshots need a signed-in user on the server too. The release manager (FULLADMIN) sees every page and lands on the Dashboard; any other user sees only Release Notes, unless an admin grants Jira access (Settings → Users) | |
 | Default admin | `manage.py setup` creates `releasemanager` / `releasemanager` only when there are no users. Until its password is changed the API answers 403 to everything except `/api/auth/me`, `/change-password` and the sign-outs, and Django Admin refuses the account (`password_change_required`) | |
 | Self sign-up | Limited to `@aiintelekt.com` addresses by default; can be switched off (the sign-in page then says to ask an administrator) | `ALLOW_REGISTRATION`, `REGISTRATION_EMAIL_DOMAINS` (empty = any domain) |
 | Content Security Policy | Report-only: browsers log what it would block in the developer console. Before enforcing it, move the inline theme script in `frontend/index.html` into a file | `CSP_ENFORCE=true` |

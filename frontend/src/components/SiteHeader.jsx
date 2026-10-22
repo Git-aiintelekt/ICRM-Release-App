@@ -11,18 +11,20 @@ function SiteHeader({ pathname, menuOpen, onToggleMenu }) {
   return (
     <header className="site-header">
       <div className="site-header-inner site-header-app">
-        <button
-          type="button"
-          className="icon-button menu-toggle"
-          aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
-          aria-expanded={Boolean(menuOpen)}
-          aria-controls="app-sidebar"
-          onClick={onToggleMenu}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d={menuOpen ? 'M6 6l12 12M18 6L6 18' : 'M4 7h16M4 12h16M4 17h16'} />
-          </svg>
-        </button>
+        {user && (
+          <button
+            type="button"
+            className="icon-button menu-toggle"
+            aria-label={menuOpen ? 'Close navigation' : 'Open navigation'}
+            aria-expanded={Boolean(menuOpen)}
+            aria-controls="app-sidebar"
+            onClick={onToggleMenu}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d={menuOpen ? 'M6 6l12 12M18 6L6 18' : 'M4 7h16M4 12h16M4 17h16'} />
+            </svg>
+          </button>
+        )}
         <Link to="/" className="brand">
           <img src={LOGO_URL} alt="" className="brand-logo" width="32" height="32" />
           <span>

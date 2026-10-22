@@ -29,8 +29,18 @@ function Gated({ allowed, path, title, children }) {
   );
 }
 
+// The only pages anyone can open without signing in.
+const SIGNED_OUT_PAGES = ['/login', '/forgot-password', '/reset-password'];
+
 function CurrentPage({ pathname, search }) {
-  const { user } = useAuth();
+  const { user, checking } = useAuth();
+  if (checking) {
+    return <p className="status-text page">Checking your sign-in…</p>;
+  }
+  // Signing in comes first: every other page shows the sign-in form, and opens once signed in.
+  if (!user && !SIGNED_OUT_PAGES.includes(pathname)) {
+    return <LoginPage search={`?next=${encodeURIComponent(pathname + search)}`} />;
+  }
   // The default admin account must choose its own password before anything else.
   if (user?.mustChangePassword) {
     return <ChangePasswordPage />;
@@ -86,19 +96,31 @@ function CurrentPage({ pathname, search }) {
   }
 }
 
-function App() {
-  const { pathname, search } = useLocation();
+// The navigation appears once signed in; it then lists only the pages this user may open (Release Notes only,
+// unless the user is an admin or was given Jira access).
+function Shell({ pathname, search }) {
+  const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-
   return (
-    <AuthProvider>
+    <>
       <SiteHeader pathname={pathname} menuOpen={menuOpen} onToggleMenu={() => setMenuOpen((open) => !open)} />
       <div className="app-shell">
-        <AppSidebar pathname={pathname} open={menuOpen} onClose={() => setMenuOpen(false)} />
+        {user && !user.mustChangePassword && (
+          <AppSidebar pathname={pathname} open={menuOpen} onClose={() => setMenuOpen(false)} />
+        )}
         <main className="site-main">
           <CurrentPage pathname={pathname} search={search} />
         </main>
       </div>
+    </>
+  );
+}
+
+function App() {
+  const { pathname, search } = useLocation();
+  return (
+    <AuthProvider>
+      <Shell pathname={pathname} search={search} />
     </AuthProvider>
   );
 }

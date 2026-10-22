@@ -115,8 +115,10 @@ try:
         assert len(release["items"]) == 2 and len(release["images"]) == 1 and len(release["items"][0]["images"]) == 1
         check("publish invalid (no items) -> 400", admin.post("/api/admin/releases", {"fileName": "x", "version": "0.0-x", "releaseDate": "2026-09-30", "items": []}, content_type=J), 400)
         rid = release["id"]
-        check("public read by version", anon.get("/api/releases/version/0.0-smoke"), 200)
-        check("screenshot served", anon.get(release["images"][0]["url"]), 200)
+        check("read by version, signed in", plain.get("/api/releases/version/0.0-smoke"), 200)
+        check("read while signed out -> 401", anon.get("/api/releases"), 401)
+        check("screenshot, signed in", plain.get(release["images"][0]["url"]), 200)
+        check("screenshot while signed out -> 401", anon.get(release["images"][0]["url"]), 401)
         # An upload only adds new versions; changes to an existing one are made on the Release Notes page.
         check("upload to an existing version -> 409", admin.post("/api/admin/releases", {"fileName": "smoke2.docx", "version": "0.0-smoke", "releaseDate": "2026-09-30", "mode": "append", "markLatest": False, "items": [{"category": "BUG_FIX", "title": "Fix C"}]}, content_type=J), 409)
 
@@ -137,7 +139,7 @@ try:
         check("mark latest", admin.patch(f"/api/admin/releases/{rid}", {"markLatest": True}, content_type=J), 200)
         assert ReleaseVersion.objects.filter(latest=True).count() == 1
         check("delete release", admin.delete(f"/api/admin/releases/{rid}"), 204)
-        check("deleted release -> 404", anon.get(f"/api/releases/{rid}"), 404)
+        check("deleted release -> 404", plain.get(f"/api/releases/{rid}"), 404)
         check("non-admin edit -> 403", plain.patch(f"/api/admin/releases/{rid}", {"summary": "x"}, content_type=J), 403)
         baseline = len(results)
 

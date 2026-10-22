@@ -6,7 +6,7 @@ import { Link, navigate } from '../lib/router';
 function safeNext(search) {
   const next = new URLSearchParams(search).get('next');
   // Only allow same-site paths, never "//evil.example" or absolute URLs.
-  return next && next.startsWith('/') && !next.startsWith('//') && next !== '/login' ? next : null;
+  return next && next.startsWith('/') && !next.startsWith('//') && next !== '/login' && next !== '/' ? next : null;
 }
 
 function LoginPage({ search }) {
@@ -37,7 +37,8 @@ function LoginPage({ search }) {
       const user = isSignIn
         ? await login(email, password)
         : await register(email, password, displayName);
-      navigate(safeNext(search) ?? (user.isAdmin ? '/upload' : '/'), { replace: true });
+      // The release manager (admin) starts on the Dashboard; everyone else on the release notes.
+      navigate(safeNext(search) ?? (user.isAdmin ? '/dashboard' : '/'), { replace: true });
     } catch (err) {
       setError(err.message);
       setSubmitting(false);

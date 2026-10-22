@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { SHOW_ADMIN_LINKS } from '../lib/navigation';
 import { SAMPLE_DOC_URL } from '../lib/releaseFormat';
 import { getReleases } from '../services/releaseService';
 import UploadPage from './UploadPage';
@@ -30,8 +29,8 @@ function toCsv(releases) {
   return `﻿${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`;
 }
 
-// Export: release notes as JSON/CSV (from the same /api/releases the Release Notes page reads), the OFBiz package,
-// and the sample Word document. Nothing here changes data.
+// Export: release notes as JSON/CSV (from the same /api/releases the Release Notes page reads) and the
+// sample Word document. Nothing here changes data.
 function ExportPanel() {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -70,11 +69,6 @@ function ExportPanel() {
         <button type="button" className="button button-secondary" disabled={busy !== null} onClick={() => exportAs('csv')}>
           {busy === 'csv' ? 'Preparing…' : 'Release changes (CSV)'}
         </button>
-        {SHOW_ADMIN_LINKS && (
-          <a className="button button-secondary" href="/admin/ofbiz_package/ofbizpackage/">
-            OFBiz package (generate / download)
-          </a>
-        )}
         <a className="button button-ghost" href={SAMPLE_DOC_URL} download>
           Sample Word document
         </a>

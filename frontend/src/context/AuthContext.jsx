@@ -1,17 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import * as authService from '../services/authService';
 import { getToken, setToken } from '../services/apiClient';
-import { OFBIZ_VIEWER } from '../lib/target';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
-  // The OFBiz viewer is read-only and has no server: nobody signs in there.
-  const [checking, setChecking] = useState(() => !OFBIZ_VIEWER && Boolean(getToken()));
+  const [checking, setChecking] = useState(() => Boolean(getToken()));
 
   useEffect(() => {
-    if (OFBIZ_VIEWER || !getToken()) {
+    if (!getToken()) {
       return;
     }
     authService

@@ -1,49 +1,11 @@
 import { useAuth } from '../context/AuthContext';
 import { Link, navigate } from '../lib/router';
-import { OFBIZ_VIEWER, embeddedPackage } from '../lib/target';
 import ThemeMenu from './ThemeMenu';
 
 const LOGO_URL = `${import.meta.env.BASE_URL}favicon.ico`;
 
-// Read-only header of the viewer packaged into OFBiz: no sign-in, no admin pages.
-function ViewerHeader() {
-  const { homeUrl } = embeddedPackage();
-  return (
-    <header className="site-header">
-      <div className="site-header-inner">
-        <a href="#top" className="brand">
-          <img src={LOGO_URL} alt="" className="brand-logo" width="32" height="32" />
-          <span>
-            iCRM <span className="brand-sub">Releases</span>
-          </span>
-        </a>
-        <nav className="site-nav" aria-label="Main">
-          <a href="#top" className="site-nav-link active" aria-current="page">
-            Release notes
-          </a>
-        </nav>
-        <div className="site-account">
-          <ThemeMenu />
-          {homeUrl && (
-            <a href={homeUrl} className="button button-ghost">
-              Back to iCRM
-            </a>
-          )}
-        </div>
-      </div>
-    </header>
-  );
-}
-
-function SiteHeader({ pathname, menuOpen, onToggleMenu }) {
-  if (OFBIZ_VIEWER) {
-    return <ViewerHeader />;
-  }
-  return <AppHeader pathname={pathname} menuOpen={menuOpen} onToggleMenu={onToggleMenu} />;
-}
-
 // The page links live in the left sidebar (AppSidebar); on narrow screens the menu button opens it.
-function AppHeader({ pathname, menuOpen, onToggleMenu }) {
+function SiteHeader({ pathname, menuOpen, onToggleMenu }) {
   const { user, checking, logout, logoutEverywhere } = useAuth();
 
   return (

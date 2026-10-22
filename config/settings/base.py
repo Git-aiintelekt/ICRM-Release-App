@@ -34,7 +34,6 @@ INSTALLED_APPS = [
     "audit",
     "releases",
     "jira",
-    "ofbiz_package",
     "frontend_app",
     "integrations",
 ]
@@ -158,11 +157,8 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 60 * 1024 * 1024
 
 UPLOAD_DIR = Path(env("UPLOAD_DIR", BASE_DIR / "media"))
 IMAGE_DIR = UPLOAD_DIR / "release-images"
-PACKAGE_DIR = Path(env("PACKAGE_DIR", BASE_DIR / "packages"))
-# "Back to iCRM" link in the packaged OFBiz viewer.
-OFBIZ_HOME_URL = env("OFBIZ_HOME_URL", "/home/control/main")
 
-# Django Admin (/admin/, including OFBiz packages) is switched off unless ENABLE_DJANGO_ADMIN=true.
+# Django Admin (/admin/) is switched off unless ENABLE_DJANGO_ADMIN=true.
 # The React app's own /api/admin/... endpoints are not affected.
 ENABLE_DJANGO_ADMIN = env("ENABLE_DJANGO_ADMIN", "false").lower() == "true"
 

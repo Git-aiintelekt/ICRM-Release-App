@@ -289,20 +289,30 @@ def _section(fn):
         return {"data": None, "error": str(exc)}
 
 
+def _status_counts(keys, issues) -> dict:
+    """Open / done for these issue keys, done split into resolved, closed and other by status name (a split is None
+    when no such status is configured). Keys Jira doesn't show count in the total only."""
+    resolved_names, closed_names = set(settings.JIRA_RESOLVED_STATUSES), set(settings.JIRA_CLOSED_STATUSES)
+    done = [k for k in keys if issues.get(k, {}).get("statusCategory") == "done"]
+    statuses = [issues[k].get("status") for k in done]
+    resolved = sum(1 for s in statuses if s in resolved_names)
+    closed = sum(1 for s in statuses if s in closed_names and s not in resolved_names)
+    return {"total": len(keys), "open": sum(1 for k in keys if k in issues and k not in done), "done": len(done),
+            "resolved": resolved if resolved_names else None, "closed": closed if closed_names else None,
+            "doneOther": len(done) - resolved - closed}
+
+
 def _release_branch_counts(client, sc) -> list[dict]:
-    """Per published release from a release/ branch in the scope: its Jira issues (the published items' Jira IDs) with
-    their live status. Newest version first."""
+    """Per published release from a release/ branch in the scope: its Jira issues (the published items' Jira IDs, i.e.
+    the ones found in the branch's commits) with their live status, all and bugs only. Newest version first."""
     rows = []
     for entry in release_generator.published_branches(sc["branches"]):
         keys = sorted({k.upper() for k in ReleaseItem.objects.filter(release_version__version=entry["version"])
                        .exclude(jira_id__isnull=True).exclude(jira_id="").values_list("jira_id", flat=True)})
         issues = client.issue_statuses(keys)
-        done = [k for k in keys if issues.get(k, {}).get("statusCategory") == "done"]
         bugs = [k for k in keys if (issues.get(k, {}).get("issueType") or "") in settings.JIRA_BUG_ISSUE_TYPES]
-        rows.append({**entry, "counts": {
-            "total": len(keys), "done": len(done), "open": len([k for k in keys if k in issues and k not in done]),
-            "notFound": len([k for k in keys if k not in issues]), "bugs": len(bugs),
-            "openBugs": len([k for k in bugs if k not in done])}})
+        rows.append({**entry, "issues": _status_counts(keys, issues), "bugs": _status_counts(bugs, issues),
+                     "notFound": sum(1 for k in keys if k not in issues)})
     rows.sort(key=lambda r: tuple(int(p) for p in r["version"].split(".")), reverse=True)
     return rows
 
@@ -310,14 +320,14 @@ def _release_branch_counts(client, sc) -> list[dict]:
 @api_view(["GET"])
 @permission_classes([JiraAccess])
 def dashboard(request):
+    """The ticket counts of the published release branches (none published yet: no counts) and integration health."""
     body = {}
     sc = scope.current()
     if jira_client.is_configured():
         client = JiraClient()
-        body["jiraSummary"] = _section(lambda: client.summary(sc["fixVersions"]))
         body["releaseBranches"] = _section(lambda: _release_branch_counts(client, sc))
     else:
-        body["jiraSummary"] = body["releaseBranches"] = {"data": None, "error": None, "notConfigured": True}
+        body["releaseBranches"] = {"data": None, "error": None, "notConfigured": True}
     body["status"] = status_json(sc)
     return Response(body)
 

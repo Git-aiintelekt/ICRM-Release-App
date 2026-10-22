@@ -213,7 +213,9 @@ contains them. Without credentials each page says which settings are missing, an
 - **Counts:** open = status category not Done; resolved / closed = Done **and** a status in `JIRA_RESOLVED_STATUSES` /
   `JIRA_CLOSED_STATUSES` (anything else Done is shown as "other done"); bugs = `JIRA_BUG_ISSUE_TYPES`. Configured names
   that don't exist in the projects are ignored and reported, never sent in JQL.
-- **Dashboard:** the Jira ticket counts, the **Published release branches** table (below) and integration health.
+- **Dashboard:** the Jira ticket cards (total, open, resolved / closed; bugs: total, open, resolved / closed) count
+  the Jira issues of one **published release branch**, chosen in the **Release** list (newest first). They are all
+  0 until a release branch is published. With several published, a table compares them. Integration health below.
 - **Release-wise summaries** (`GET /api/integrations/jira/releases`, no longer on the Dashboard): listed under the fix
   version names Jira actually has, tied to this app's versions only through `JIRA_FIX_VERSION_MAP`.
 - **Commits → Jira:** keys of the configured projects in commit messages / PR titles are looked up live in Jira. A commit

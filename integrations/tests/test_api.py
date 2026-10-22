@@ -105,37 +105,29 @@ class StatusTests(IntegrationTestCase):
 
 
 class DashboardTests(IntegrationTestCase):
-    def test_dashboard_combines_every_section(self):
+    def test_nothing_published_means_no_counts_and_no_external_calls(self):
         http = self.serve(bitbucket_and_jira())
-        http.on("POST", r"/search/approximate-count", counts_by_jql)
-        http.routes.insert(0, http.routes.pop())
         body = self.call(api.dashboard, VIEWER).data
-        self.assertEqual(body["jiraSummary"]["data"]["issues"]["open"], 40)
-        self.assertEqual(body["jiraSummary"]["data"]["bugs"]["open"], 12)
         self.assertEqual(body["releaseBranches"]["data"], [])  # nothing published from a release branch
-        self.assertEqual(set(body), {"jiraSummary", "releaseBranches", "status"})
-        # A second load is served from the cache: no new external calls.
-        calls = len(http.calls)
-        self.call(api.dashboard, VIEWER)
-        self.assertEqual(len(http.calls), calls)
+        self.assertEqual(set(body), {"releaseBranches", "status"})
+        self.assertEqual(http.calls, [])  # no project-wide Jira counts, no Bitbucket activity
 
-    def test_dashboard_follows_the_scope(self):
-        self.scope.update(fixVersions=["iCRM 10.9"], branches={"icrm-base-framework-master": ["icrm_release_10_9_0"]})
-        http = self.serve(bitbucket_and_jira())
-        http.on("POST", r"/search/approximate-count", counts_by_jql)
-        http.routes.insert(0, http.routes.pop())
-        body = self.call(api.dashboard, VIEWER).data
-        self.assertEqual(body["jiraSummary"]["data"]["fixVersions"], ["iCRM 10.9"])
-        self.assertTrue(all('fixVersion in ("iCRM 10.9")' in b["jql"] for b in http.bodies("approximate-count")))
-        self.assertEqual(body["status"]["scope"]["fixVersions"], ["iCRM 10.9"])
-        self.assertFalse([c for c in http.calls if c["path"].endswith(("/commits", "/pullrequests"))])
+    @override_settings(JIRA_RESOLVED_STATUSES=["Resolved"], JIRA_CLOSED_STATUSES=["Closed", "Done"])
+    def test_counts_split_done_into_resolved_and_closed(self):
+        issues = {"CS-1": {"statusCategory": "done", "status": "Resolved"},
+                  "CS-2": {"statusCategory": "done", "status": "Done"},
+                  "CS-3": {"statusCategory": "done", "status": "Won't do"},
+                  "CS-4": {"statusCategory": "indeterminate", "status": "In Progress"}}
+        self.assertEqual(api._status_counts(["CS-1", "CS-2", "CS-3", "CS-4", "CS-5"], issues),
+                         {"total": 5, "open": 1, "done": 3, "resolved": 1, "closed": 1, "doneOther": 1})
+        with override_settings(JIRA_RESOLVED_STATUSES=[]):
+            self.assertIsNone(api._status_counts(["CS-1"], issues)["resolved"])
+        self.assertEqual(api._status_counts([], issues)["total"], 0)
 
     @override_settings(JIRA_API_TOKEN="", BITBUCKET_WORKSPACE="")
     def test_dashboard_when_nothing_is_configured(self):
         self.serve(FakeHttp())
         body = self.call(api.dashboard, VIEWER).data
-        self.assertTrue(body["jiraSummary"]["notConfigured"])
-        self.assertTrue(body["releaseBranches"]["notConfigured"])
         self.assertEqual(self.http.calls, [])
 
 

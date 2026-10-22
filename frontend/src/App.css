@@ -2665,3 +2665,8 @@ a.stat-card:hover {
   flex-basis: 100%;
   margin: 0;
 }
+
+.dashboard-release-picker {
+  max-width: 420px;
+  margin-bottom: 16px;
+}

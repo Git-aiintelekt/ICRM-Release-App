@@ -139,11 +139,13 @@ class PublishedBranchTests(IntegrationTestCase):
         items.return_value.exclude.return_value.exclude.return_value.values_list.return_value = ["CS-1", "CS-2", "cs-3"]
         client = mock.Mock()
         client.issue_statuses.return_value = {
-            "CS-1": {"statusCategory": "done", "issueType": "Bug"},
-            "CS-2": {"statusCategory": "indeterminate", "issueType": "Bug"},
+            "CS-1": {"statusCategory": "done", "status": "Resolved", "issueType": "Bug"},
+            "CS-2": {"statusCategory": "indeterminate", "status": "Open", "issueType": "Bug"},
         }
         rows = api._release_branch_counts(client, self.scope)
         self.assertEqual(rows, [{"version": "10.9.0",
                                  "branches": [{"repository": "icrm-b2b-master",
                                                "branch": "release/icrm_release_10_9_0_18122025"}],
-                                 "counts": {"total": 3, "done": 1, "open": 1, "notFound": 1, "bugs": 2, "openBugs": 1}}])
+                                 "issues": {"total": 3, "open": 1, "done": 1, "resolved": 1, "closed": 0, "doneOther": 0},
+                                 "bugs": {"total": 2, "open": 1, "done": 1, "resolved": 1, "closed": 0, "doneOther": 0},
+                                 "notFound": 1}])

@@ -213,16 +213,17 @@ contains them. Without credentials each page says which settings are missing, an
 - **Counts:** open = status category not Done; resolved / closed = Done **and** a status in `JIRA_RESOLVED_STATUSES` /
   `JIRA_CLOSED_STATUSES` (anything else Done is shown as "other done"); bugs = `JIRA_BUG_ISSUE_TYPES`. Configured names
   that don't exist in the projects are ignored and reported, never sent in JQL.
-- **Release-wise summaries:** listed under the fix version names Jira actually has. They are tied to this app's versions
-  only through `JIRA_FIX_VERSION_MAP`; name matches are shown as unconfirmed hints.
+- **Dashboard:** the Jira ticket counts, the **Published release branches** table (below) and integration health.
+- **Release-wise summaries** (`GET /api/integrations/jira/releases`, no longer on the Dashboard): listed under the fix
+  version names Jira actually has, tied to this app's versions only through `JIRA_FIX_VERSION_MAP`.
 - **Commits → Jira:** keys of the configured projects in commit messages / PR titles are looked up live in Jira. A commit
   never marks an issue resolved.
 - **Repositories:** only those in `BITBUCKET_REPOSITORIES` can be read (currently `icrm-base-framework-master` and
   `icrm-b2b-master`); add `sql_group` there to show it too.
 - **Scope (Settings → Integrations → *What the screens show*):** admins add branches per repository and Jira fix
-  versions. With branches added, the Bitbucket page lists only those branches, Commits & Pull Requests and the Dashboard
-  show only commits on them and pull requests into or out of them, and the branch box becomes a list of those
-  branches. With fix versions added, the Dashboard counts, the release-wise table and the Jira ticket list cover only
+  versions. With branches added, the Bitbucket page lists only those branches, Commits & Pull Requests show only
+  commits on them and pull requests into or out of them, and the branch box becomes a list of those
+  branches. With fix versions added, the Dashboard counts and the Jira ticket list cover only
   those versions (this overrides `JIRA_FIX_VERSION_MAP`). It applies to every user; with nothing added, everything is
   shown. Each name is checked against Bitbucket / Jira before it's saved, and changes are audited as `INTEGRATION_SCOPE`.
 - **Release notes from Bitbucket (Import / Export → Draft from Bitbucket):** every branch named
@@ -235,7 +236,7 @@ contains them. Without credentials each page says which settings are missing, an
   warnings for issues Jira doesn't show and issues not done yet, and is saved only when published
   (`integrations/release_generator.py`).
 - **After publishing a drafted version:** its `release/` branches are added to the scope (below), so the Bitbucket
-  page lists only the published release branches, and Commits & Pull Requests and the Dashboard show only theirs. A
+  page lists only the published release branches, and Commits & Pull Requests show only theirs. A
   release branch's commits are that version's own (not on the previous version's branch; with two versions shown,
   everything since the older one's predecessor). The Dashboard's **Published release branches** table counts each
   release's Jira issues (its published Jira IDs) with their live status: done, open, bugs, open bugs. Deleting the

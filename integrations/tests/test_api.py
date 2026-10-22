@@ -112,10 +112,8 @@ class DashboardTests(IntegrationTestCase):
         body = self.call(api.dashboard, VIEWER).data
         self.assertEqual(body["jiraSummary"]["data"]["issues"]["open"], 40)
         self.assertEqual(body["jiraSummary"]["data"]["bugs"]["open"], 12)
-        self.assertIsNotNone(body["releases"]["data"])
-        self.assertEqual(len(body["commits"]["data"]["values"]), 2)
-        self.assertEqual(len(body["pullRequests"]["data"]["values"]), 2)
-        self.assertEqual(body["repository"], "icrm-base-framework-master")
+        self.assertEqual(body["releaseBranches"]["data"], [])  # nothing published from a release branch
+        self.assertEqual(set(body), {"jiraSummary", "releaseBranches", "status"})
         # A second load is served from the cache: no new external calls.
         calls = len(http.calls)
         self.call(api.dashboard, VIEWER)
@@ -130,24 +128,14 @@ class DashboardTests(IntegrationTestCase):
         self.assertEqual(body["jiraSummary"]["data"]["fixVersions"], ["iCRM 10.9"])
         self.assertTrue(all('fixVersion in ("iCRM 10.9")' in b["jql"] for b in http.bodies("approximate-count")))
         self.assertEqual(body["status"]["scope"]["fixVersions"], ["iCRM 10.9"])
-        commits = next(c for c in http.calls if c["path"].endswith("/commits"))
-        self.assertEqual(commits["query"]["include"], ["icrm_release_10_9_0"])
-        prs = next(c for c in http.calls if c["path"].endswith("/pullrequests"))
-        self.assertIn('destination.branch.name = "icrm_release_10_9_0"', prs["query"]["q"][0])
-
-    def test_one_failing_service_does_not_hide_the_other(self):
-        self.serve(bitbucket_and_jira(commits=(500, {}), prs=(500, {})))
-        body = self.call(api.dashboard, VIEWER).data
-        self.assertIsNotNone(body["jiraSummary"]["data"])
-        self.assertIn("HTTP 500", body["commits"]["error"])
-        self.assertIsNone(body["commits"]["data"])
+        self.assertFalse([c for c in http.calls if c["path"].endswith(("/commits", "/pullrequests"))])
 
     @override_settings(JIRA_API_TOKEN="", BITBUCKET_WORKSPACE="")
     def test_dashboard_when_nothing_is_configured(self):
         self.serve(FakeHttp())
         body = self.call(api.dashboard, VIEWER).data
         self.assertTrue(body["jiraSummary"]["notConfigured"])
-        self.assertTrue(body["commits"]["notConfigured"])
+        self.assertTrue(body["releaseBranches"]["notConfigured"])
         self.assertEqual(self.http.calls, [])
 
 

@@ -315,34 +315,9 @@ def dashboard(request):
     if jira_client.is_configured():
         client = JiraClient()
         body["jiraSummary"] = _section(lambda: client.summary(sc["fixVersions"]))
-        body["releases"] = _section(lambda: client.release_summaries(_app_versions(), only=sc["fixVersions"]))
         body["releaseBranches"] = _section(lambda: _release_branch_counts(client, sc))
     else:
-        body["jiraSummary"] = body["releases"] = body["releaseBranches"] = {"data": None, "error": None,
-                                                                            "notConfigured": True}
-
-    if bitbucket_client.is_configured():
-        bb = BitbucketClient()
-        repo = bitbucket_client.repositories()[0]
-        body["repository"] = repo
-        branches = sc["branches"].get(repo, [])
-
-        def recent_commits():
-            exclude = release_generator.previous_branches(bb, repo, branches)
-            commits = bb.commits(repo, branches=branches, exclude=exclude, limit=10)["values"]
-            items, warning = with_jira_status([dict(c) for c in commits])
-            return {"values": items, "jiraWarning": warning}
-
-        def recent_prs():
-            items, warning = with_jira_status([dict(p) for p in bb.pull_requests(repo, branches=branches, limit=10)["values"]])
-            return {"values": items, "jiraWarning": warning}
-
-        body["commits"] = _section(recent_commits)
-        body["pullRequests"] = _section(recent_prs)
-    else:
-        body["repository"] = None
-        body["commits"] = body["pullRequests"] = {"data": None, "error": None, "notConfigured": True}
-
+        body["jiraSummary"] = body["releaseBranches"] = {"data": None, "error": None, "notConfigured": True}
     body["status"] = status_json(sc)
     return Response(body)
 

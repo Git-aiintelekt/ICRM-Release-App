@@ -1,21 +1,25 @@
 # iCRM Release Notes (Django)
 
-The Release Notes management app: add, edit, publish and email iCRM release notes.
-It replaced `python-backend` (FastAPI, now retired). It uses the **same database, tables, users and passwords**,
-and serves the **same React UI**.
+The Release Notes management app: add, edit, publish and email iCRM release notes, drafted from Word documents or
+straight from Bitbucket release branches and their Jira issues. It replaced `python-backend` (FastAPI, now retired):
+it still works on that app's database (`react_database`) as it is, and creates every table itself on a new one.
 
 | | |
 |---|---|
 | Framework | Django 6.1, Django REST Framework, React 19 (Vite) |
-| Database | MySQL `react_database` (5.5.62) through a small compatibility backend, `config/db_backends/mysql55` |
+| Database | MySQL 5.5 (any database name; created on first start) through a small compatibility backend, `config/db_backends/mysql55` |
 
 ---
 
 ## Local development
 
-Needs Python 3.14, Node.js 24 and the local MySQL server (`C:\Program Files\MySQL\MySQL Server 5.5`, already running as a Windows service).
+Needs Python 3.14, Node.js 24 and a running MySQL server (here `C:\Program Files\MySQL\MySQL Server 5.5`, running as
+a Windows service). The database itself doesn't need to exist.
 
 ### First-time setup (after cloning)
+
+In PowerShell. Steps 1 to 3 are needed once per checkout: git has no Python packages, no built web pages and no
+`.env`. Every command in them is needed, not only the first one.
 
 ```powershell
 git clone https://github.com/Git-aiintelekt/ICRM-Release-App.git
@@ -24,16 +28,23 @@ cd ICRM-Release-App
 
 1. **Python environment and packages**
    ```powershell
-   python -m venv .venv
+   py -3.14 -m venv .venv
    .venv\Scripts\pip install -r requirements.txt
    ```
-2. **Settings (`.env`)**: not in git, so create it from the template and fill in `DB_PASSWORD`,
-   `DJANGO_SECRET_KEY` and `APP_SECRET_KEY` (or copy an existing `.env` from a teammate's or an older checkout).
+2. **Settings (`.env`)**: not in git, so create it from the template (or copy an existing `.env` from a teammate's
+   or an older checkout) and fill it in.
    ```powershell
    copy .env.example .env
-   mkdir media\release-images
+   notepad .env
    ```
-   Screenshots are saved under `UPLOAD_DIR` (default `media\` in this folder).
+   - `DB_PASSWORD`: the MySQL password of `DB_USER` (default `root`).
+   - `DB_NAME`: the database to use. A name that doesn't exist yet (e.g. `release_notes`) gives a new, empty one,
+     created on first start; `react_database` uses the existing data.
+   - `DJANGO_SECRET_KEY` and `APP_SECRET_KEY`: two long random texts. Keep `APP_SECRET_KEY` once it's set: the Jira
+     and Bitbucket tokens saved in the app are encrypted with it.
+   - `JIRA_*` / `BITBUCKET_*`: optional; they can be entered in the app instead (step 5).
+
+   Screenshots are saved under `UPLOAD_DIR` (default `media\` in this folder, created when needed).
 3. **Build the React frontend (required).** Django serves the UI from `frontend\dist`, which isn't in git.
    Without it, http://localhost:8000 shows "The React app isn't built yet".
    ```powershell
@@ -48,11 +59,21 @@ cd ICRM-Release-App
    - creates every table (`migrate`; on an existing database it adds only what is missing, data untouched),
    - creates the default admin **`admin` / `admin`** when there are no users yet.
 
-   Sign in as `admin` / `admin`: the app asks for a new password before anything else works (Django Admin stays
-   closed to the account until then). Then connect Jira and Bitbucket on **Settings → Integrations**.
-
+   ```powershell
+   .venv\Scripts\python manage.py runserver 8000
+   ```
    On a server started with waitress instead of `runserver`, run `.venv\Scripts\python manage.py setup` once after
    each deployment.
+5. **Sign in and connect Jira and Bitbucket.** Open http://localhost:8000 and sign in as `admin` / `admin`. The app
+   asks for a new password (at least 8 characters) before anything else works; Django Admin stays closed to the
+   account until then. Unless `.env` already has them, open **Settings → Integrations → Jira and Bitbucket
+   connection**, enter the Jira site URL, email and API token and the Bitbucket workspace, email and API token, save,
+   and click **Refresh and test connections**.
+6. **First release notes.** A new database has none: the Release Notes page says "No release history is available
+   yet" until a version is published. Open **Import / Export**, then upload a Word document, or under **Draft from
+   Bitbucket** choose a version (one per `release/icrm_release_<version>_<date>` branch, see
+   [Jira and Bitbucket](#jira-and-bitbucket-live-data)), click **Draft release notes**, review the changes and
+   warnings, and **Publish**. Publish older versions first, so the newest one ends up marked Latest.
 
 ### Every time
 

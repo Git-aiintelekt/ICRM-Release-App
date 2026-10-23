@@ -87,14 +87,14 @@ function ScopeSettings({ status, onChange }) {
 
       <div className="scope-grid">
         <div className="scope-block">
-          <h4>Bitbucket repositories</h4>
-          <RepositoryEditor status={status} onChange={onChange} />
+          <h4>Bitbucket repositories of {status.product.label}</h4>
+          <RepositoryEditor status={status} product={status.product} onChange={onChange} />
         </div>
 
         <div className="scope-block">
           <h4>Bitbucket branches</h4>
           {status.bitbucket.repositories.length === 0 ? (
-            <p className="cell-sub">No repositories are configured.</p>
+            <p className="cell-sub">{status.product.label} has no repositories yet.</p>
           ) : (
             <BranchEditor status={status} onChange={onChange} />
           )}

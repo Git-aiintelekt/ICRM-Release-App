@@ -1,4 +1,6 @@
 """Release notes on the existing release_* tables (unmanaged: Django never alters them)."""
+import secrets
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -19,9 +21,60 @@ class Status(models.TextChoices):
     UPCOMING = "UPCOMING", "Coming soon"
 
 
+def new_public_key() -> str:
+    """16 random URL-safe characters: a public link that can't be guessed from another one."""
+    return secrets.token_urlsafe(12)
+
+
+class Product(models.Model):
+    """A product with its own release notes (iCRM, IUC, Sales Audit, ...), or a client of one (parent = the product):
+    IUC's clients each have their own repositories, branches and versions. New table release_product.
+    Its Bitbucket repositories are ProductRepository rows; every screen follows the product / client picked in the
+    header. A product's own rows (no client picked) are the ones all its clients share."""
+
+    id = models.BigAutoField(primary_key=True)
+    parent = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="clients")
+    name = models.CharField(max_length=50)
+    # The public release notes link: /public/release-notes/<public_key>. A new key makes the old link stop working.
+    public_key = models.CharField(max_length=24, unique=True, default=new_public_key, editable=False)
+    display_order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    class Meta:
+        db_table = "release_product"
+        ordering = ["display_order", "id"]
+        constraints = [models.UniqueConstraint(fields=["parent", "name"], name="release_product_parent_name_unique")]
+
+    def __str__(self):
+        return self.label
+
+    @property
+    def label(self) -> str:
+        """"IUC – Client A" for a client, the name for a product."""
+        return f"{self.parent.name} – {self.name}" if self.parent_id else self.name
+
+
+class ProductRepository(models.Model):
+    """A Bitbucket repository (slug) of a product. One repository can belong to several products (a shared framework)."""
+
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="repositories")
+    repository = models.CharField(max_length=100)
+
+    class Meta:
+        db_table = "release_product_repository"
+        ordering = ["product", "repository"]
+        constraints = [models.UniqueConstraint(fields=["product", "repository"], name="release_product_repository_unique")]
+
+    def __str__(self):
+        return f"{self.product}: {self.repository}"
+
+
 class ReleaseVersion(models.Model):
     id = models.BigAutoField(primary_key=True)
-    version = models.CharField(max_length=50, unique=True)
+    # Added to the existing table by releases/0002 (product_id, unique together with version).
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="releases", db_column="product_id",
+                                db_constraint=False)
+    version = models.CharField(max_length=50)
     release_date = models.DateField()
     description = models.CharField("summary", max_length=1000, blank=True)
     latest = models.BooleanField("latest", default=False, db_column="is_latest",
@@ -43,9 +96,10 @@ class ReleaseVersion(models.Model):
         db_table = "release_version"
         ordering = ["-release_date"]
         verbose_name = "release version"
+        unique_together = [("product", "version")]
 
     def __str__(self):
-        return f"Version {self.version}"
+        return f"{self.product.label} {self.version}" if self.product_id else f"Version {self.version}"
 
     def save(self, *args, **kwargs):
         self.updated_at = timezone.now()

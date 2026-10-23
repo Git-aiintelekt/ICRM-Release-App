@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import ReleaseEntry from '../components/ReleaseEntry';
 import { useAuth } from '../context/AuthContext';
-import { PUBLIC_RELEASE_NOTES_PATH } from '../lib/navigation';
+import { useProduct } from '../context/ProductContext';
+import { publicKeyOf, publicLink } from '../lib/navigation';
 import { CATEGORIES, CATEGORY_ORDER, formatReleaseDate, versionAnchor } from '../lib/releaseFormat';
 import { Link } from '../lib/router';
 import { getAuthOptions } from '../services/authService';
-import { getPublicReleases, getReleases } from '../services/releaseService';
+import { getPublicProduct, getPublicReleases, getReleases } from '../services/releaseService';
 
 // Release manager only, while the public page is switched on: copies its link (or one version's) to share.
 function CopyPublicLinkButton() {
+  const { product } = useProduct();
   const [publicOn, setPublicOn] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -18,11 +20,12 @@ function CopyPublicLinkButton() {
       .catch(() => null);
   }, []);
 
-  if (!publicOn) {
+  if (!publicOn || !product?.publicKey) {
     return null;
   }
   const copy = async () => {
-    const url = `${window.location.origin}${PUBLIC_RELEASE_NOTES_PATH}`;
+    // This product's or client's own link: its key, not its id, so other clients' links can't be guessed from it.
+    const url = publicLink(product.publicKey);
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
@@ -46,18 +49,14 @@ function CopyPublicLinkButton() {
 // Colour of each kind of change in the summary bars (the same as its label on the list).
 const CATEGORY_TONE = { NEW_FEATURE: 'new', IMPROVEMENT: 'improved', BUG_FIX: 'fixed', SECURITY: 'security' };
 
-// Beside the page title: how many versions and changes there are, and the latest version.
-function HeroStats({ releases, totalChanges }) {
+// Beside the page title: how many versions there are, and the latest version.
+function HeroStats({ releases }) {
   const latest = releases.find((r) => r.isLatest);
   return (
     <dl className="hero-stats">
       <div className="hero-stat">
         <dt>Versions</dt>
         <dd>{releases.length}</dd>
-      </div>
-      <div className="hero-stat">
-        <dt>Changes</dt>
-        <dd>{totalChanges}</dd>
       </div>
       {latest && (
         <div className="hero-stat hero-stat-wide">
@@ -131,6 +130,11 @@ function matches(item, query) {
 // publicView: the public page (/public/release-notes) for anyone, signed in or not. Read-only, without Jira numbers.
 function ReleasesPage({ publicView = false }) {
   const { user: signedInUser } = useAuth();
+  const { product } = useProduct();
+  // The public page: the product or client its link's key names (no product picker there).
+  const publicKey = publicView ? publicKeyOf(window.location.pathname) : null;
+  const [publicLabel, setPublicLabel] = useState(null);
+  const productName = (publicView ? publicLabel : product?.label) ?? 'iCRM';
   const user = publicView ? null : signedInUser;
   const [releases, setReleases] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -140,21 +144,26 @@ function ReleasesPage({ publicView = false }) {
   const [activeAnchor, setActiveAnchor] = useState(null);
 
   useEffect(() => {
-    (publicView ? getPublicReleases() : getReleases())
+    if (publicView) {
+      getPublicProduct(publicKey)
+        .then((p) => setPublicLabel(p.label))
+        .catch(() => null);
+    }
+    (publicView ? getPublicReleases(publicKey) : getReleases())
       .then(setReleases)
       .catch((err) =>
         setError(
           publicView && err.status === 404
-            ? 'The public release notes page is switched off. Ask the release manager for access.'
+            ? 'These release notes are not available: the link is old or the public page is switched off. Ask the release manager for a new link.'
             : 'Unable to load release history. Please try again later.'
         )
       )
       .finally(() => setLoading(false));
-  }, [publicView]);
+  }, [publicView, publicKey]);
 
   // Which version is Latest is decided on the server (the highest released number); reload when an edit moves it.
   const reload = () =>
-    (publicView ? getPublicReleases() : getReleases()).then(setReleases).catch(() => null);
+    (publicView ? getPublicReleases(publicKey) : getReleases()).then(setReleases).catch(() => null);
 
   // Honour deep links like /#icrm-v109 once the content exists.
   useEffect(() => {
@@ -214,8 +223,8 @@ function ReleasesPage({ publicView = false }) {
           <h1>Release notes</h1>
           <p className="page-lede">
             {publicView
-              ? 'New features, improvements and bug fixes shipped in every iCRM release.'
-              : 'New features, improvements and bug fixes shipped in every iCRM release, linked to their Jira tickets.'}
+              ? `New features, improvements and bug fixes shipped in every ${productName} release.`
+              : `New features, improvements and bug fixes shipped in every ${productName} release, linked to their Jira tickets.`}
           </p>
           {user?.isAdmin && (
             <div className="hero-actions">
@@ -226,12 +235,12 @@ function ReleasesPage({ publicView = false }) {
             </div>
           )}
         </div>
-        {releases.length > 0 && <HeroStats releases={releases} totalChanges={totals.ALL} />}
+        {releases.length > 0 && <HeroStats releases={releases} />}
       </section>
 
       {loading && <p className="status-text">Loading release history…</p>}
       {error && <p className="status-text status-error">{error}</p>}
-      {!loading && !error && releases.length === 0 && <p className="status-text">No release history is available yet.</p>}
+      {!loading && !error && releases.length === 0 && <p className="status-text">No {productName} release notes are published yet.</p>}
 
       {!loading && !error && releases.length > 0 && (
         <div className="releases-layout">

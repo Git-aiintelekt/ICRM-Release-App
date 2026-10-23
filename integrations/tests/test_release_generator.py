@@ -5,7 +5,7 @@ from unittest import mock
 from integrations import release_generator as g
 
 from .base import IntegrationTestCase
-from .fakes import FakeHttp, FakeUser
+from .fakes import FakeHttp, FakeProduct, FakeUser
 
 ADMIN = FakeUser(admin=True)
 VIEWER = FakeUser(jira=True)
@@ -64,10 +64,10 @@ class VersionsTests(IntegrationTestCase):
         self.repository_changes = (["icrm-b2b-master"], [])
         mock.patch("integrations.release_generator._release_branches",
                    side_effect=lambda client, slug: [b for b in map(g.parse_branch, BRANCHES.get(slug, [])) if b]).start()
-        mock.patch("integrations.release_generator.ReleaseVersion.objects.values_list", return_value=["10.9.0"]).start()
+        mock.patch("integrations.release_generator.ReleaseVersion.objects.filter").start()             .return_value.values_list.return_value = ["10.9.0"]
 
     def test_only_release_branches_are_versions_compared_with_the_previous_version(self):
-        found = g.versions()
+        found = g.versions(self.product)
         self.assertEqual([v["version"] for v in found], ["10.9.0"])
         self.assertTrue(found[0]["published"])
         self.assertEqual(found[0]["repositories"], [{
@@ -82,7 +82,7 @@ class VersionsTests(IntegrationTestCase):
             "CS-1": {"summary": "New report", "description": "Details", "issueType": "Story", "labels": [], "done": True},
             "CS-2": {"summary": "Export fails", "description": None, "issueType": "Bug", "labels": [], "done": False},
         }).start()
-        draft = g.generate("10.9.0")
+        draft = g.generate(self.product, "10.9.0")
         commits.assert_called_once_with(mock.ANY, "icrm-b2b-master", "release/icrm_release_10_9_0_18122025",
                                         "icrm_release_10_8_5_08102025")
         self.assertEqual([(i["category"], i["jiraId"], i["title"]) for i in draft["items"]],
@@ -121,7 +121,7 @@ class PublishedBranchTests(IntegrationTestCase):
     def test_link_adds_only_this_versions_release_branches(self):
         objects = mock.patch("integrations.release_generator.IntegrationScope.objects").start()
         objects.get_or_create.return_value = (mock.Mock(), True)
-        added = g.link_branches("10.9.0", [
+        added = g.link_branches(self.product, "10.9.0", [
             {"repository": "icrm-b2b-master", "branch": "release/icrm_release_10_9_0_18122025"},
             {"repository": "icrm-b2b-master", "branch": "release/icrm_release_10_8_5_08102025"},  # another version
             {"repository": "icrm-b2b-master", "branch": "icrm_release_10_9_0_18122025"},          # not under release/
@@ -142,10 +142,37 @@ class PublishedBranchTests(IntegrationTestCase):
             "CS-1": {"statusCategory": "done", "status": "Resolved", "issueType": "Bug"},
             "CS-2": {"statusCategory": "indeterminate", "status": "Open", "issueType": "Bug"},
         }
-        rows = api._release_branch_counts(client, self.scope)
+        rows = api._release_branch_counts(client, self.product, self.scope)
         self.assertEqual(rows, [{"version": "10.9.0",
                                  "branches": [{"repository": "icrm-b2b-master",
                                                "branch": "release/icrm_release_10_9_0_18122025"}],
                                  "issues": {"total": 3, "open": 1, "done": 1, "resolved": 1, "closed": 0, "doneOther": 0},
                                  "bugs": {"total": 2, "open": 1, "done": 1, "resolved": 1, "closed": 0, "doneOther": 0},
                                  "notFound": 1}])
+
+
+class ProductRepositoryTests(IntegrationTestCase):
+    """Each product's screens show only its own repositories."""
+
+    def setUp(self):
+        super().setUp()
+        self.serve(FakeHttp())
+        self.repository_changes = (["icrm-b2b-master"], [])
+        mock.patch("integrations.release_generator._release_branches",
+                   side_effect=lambda client, slug: [b for b in map(g.parse_branch, BRANCHES.get(slug, [])) if b]).start()
+        mock.patch("integrations.release_generator.ReleaseVersion.objects.filter").start() \
+            .return_value.values_list.return_value = []
+
+    def test_a_product_without_repositories_has_no_versions_and_links_no_branches(self):
+        self.product_repositories = []
+        self.assertEqual(g.versions(FakeProduct(2, "IUC")), [])
+        added = g.link_branches(FakeProduct(2, "IUC"), "10.9.0", [
+            {"repository": "icrm-b2b-master", "branch": "release/icrm_release_10_9_0_18122025"}], ADMIN)
+        self.assertEqual(added, [])
+
+    def test_release_branches_of_other_products_repositories_are_not_counted(self):
+        self.product_repositories = ["icrm-base-framework-master"]
+        scope = {"icrm-b2b-master": ["release/icrm_release_10_9_0_18122025"]}
+        mock.patch("integrations.release_generator.ReleaseVersion.objects.filter").start() \
+            .return_value.values_list.return_value = ["10.9.0"]
+        self.assertEqual(g.published_branches(self.product, scope), [])

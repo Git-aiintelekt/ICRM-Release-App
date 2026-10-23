@@ -114,6 +114,32 @@ export function Pager({ page, hasNext, onChange, label }) {
 }
 
 // Connection state per service: configured, last successful sync, last error (from /api/integrations/status).
+// One service's connection state, from its entry in /api/integrations/status.
+export function serviceHealth(s) {
+  const healthy = Boolean(s.configured && s.lastSuccessAt && (!s.lastErrorAt || s.lastErrorAt < s.lastSuccessAt));
+  const state = !s.configured ? 'Not configured' : healthy ? 'Connected' : s.lastErrorAt ? 'Error' : 'Not checked yet';
+  const tone = !s.configured ? 'unknown' : healthy ? 'done' : s.lastErrorAt ? 'error' : 'new';
+  return { healthy, state, tone };
+}
+
+// Summary tiles beside a page title (inside .page-hero-split). Each item: { label, value, sub?, text?, wide? };
+// `text` marks a word rather than a number, shown smaller.
+export function HeroStats({ items }) {
+  return (
+    <dl className="hero-stats">
+      {items.map((item) => (
+        <div key={item.label} className={item.wide ? 'hero-stat hero-stat-wide' : 'hero-stat'}>
+          <dt>{item.label}</dt>
+          <dd className={item.text ? 'hero-stat-text' : undefined}>
+            {item.value}
+            {item.sub && <span className="hero-stat-sub">{item.sub}</span>}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function HealthPanel({ status }) {
   const services = [
     ['Jira', status.jira, status.jira.projectKeys?.join(', ')],
@@ -122,9 +148,7 @@ export function HealthPanel({ status }) {
   return (
     <div className="health-grid">
       {services.map(([name, s, scope]) => {
-        const healthy = s.configured && s.lastSuccessAt && (!s.lastErrorAt || s.lastErrorAt < s.lastSuccessAt);
-        const state = !s.configured ? 'Not configured' : healthy ? 'Connected' : s.lastErrorAt ? 'Error' : 'Not checked yet';
-        const tone = !s.configured ? 'unknown' : healthy ? 'done' : s.lastErrorAt ? 'error' : 'new';
+        const { state, tone } = serviceHealth(s);
         return (
           <div key={name} className="health-card">
             <div className="health-head">

@@ -18,8 +18,13 @@ HEADINGS = {"NEW_FEATURE": "What's new", "IMPROVEMENT": "Improvements", "BUG_FIX
 LABELS = dict(Category.choices)
 
 
+def _product(release: dict) -> str:
+    return release.get("productName") or "iCRM"
+
+
 def file_name(release: dict) -> str:
-    return "iCRM-release-notes-" + re.sub(r"[^0-9A-Za-z._-]", "_", release["version"]) + ".html"
+    return (re.sub(r"[^0-9A-Za-z._-]", "_", _product(release)) + "-release-notes-"
+            + re.sub(r"[^0-9A-Za-z._-]", "_", release["version"]) + ".html")
 
 
 def page_url(release: dict) -> str:
@@ -53,7 +58,7 @@ def _list_html(title: str, lines: list[str]) -> str:
 
 def notes_html(release: dict) -> str:
     """The attachment: a complete page that opens in any browser, styled inline."""
-    parts = [f"<h1>iCRM Release {escape(release['version'])}</h1>", f'<p class="when">{escape(_when(release))} · '
+    parts = [f"<h1>{escape(_product(release))} Release {escape(release['version'])}</h1>", f'<p class="when">{escape(_when(release))} · '
              f"{len(release['items'])} changes</p>"]
     if release.get("description"):
         parts.append(f"<p>{escape(release['description'])}</p>")
@@ -69,7 +74,7 @@ def notes_html(release: dict) -> str:
     parts.append(_list_html("Upgrade notes", release["upgradeNotes"]))
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>iCRM Release {escape(release['version'])}</title>
+<title>{escape(_product(release))} Release {escape(release['version'])}</title>
 <style>
 body {{ margin: 0 auto; max-width: 760px; padding: 32px 16px; font: 15px/1.55 "Segoe UI", Arial, sans-serif;
   color: #1f2328; background: #fff; }}
@@ -88,7 +93,7 @@ a {{ color: #0969da; }}
 
 def notes_text(release: dict) -> str:
     """Plain-text version, used as the email body."""
-    lines = [f"iCRM Release {release['version']}", f"{_when(release)} · {len(release['items'])} changes", ""]
+    lines = [f"{_product(release)} Release {release['version']}", f"{_when(release)} · {len(release['items'])} changes", ""]
     if release.get("description"):
         lines += [release["description"], ""]
 
@@ -109,7 +114,7 @@ def build_email(release: dict, *, to: list[str], cc: list[str], message: str, se
     intro = (message.strip() + "\n\n") if message.strip() else ""
     body = (f"{intro}{notes_text(release)}\nFull release notes with screenshots: {page_url(release)}\n"
             f"The notes are also attached as {file_name(release)}.\n\nSent by {sender_name} from Release Manager.\n")
-    email = EmailMultiAlternatives(subject=f"iCRM Release {release['version']} - release notes", body=body,
+    email = EmailMultiAlternatives(subject=f"{_product(release)} Release {release['version']} - release notes", body=body,
                                    to=to, cc=cc, reply_to=[reply_to] if reply_to else None)
     email.attach(file_name(release), notes_html(release), "text/html")
     return email

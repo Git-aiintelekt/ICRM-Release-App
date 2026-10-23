@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ApiState, JiraKeyLinks, NotConfigured, Pager } from '../components/IntegrationUI';
+import { ApiState, HeroStats, JiraKeyLinks, NotConfigured, Pager } from '../components/IntegrationUI';
 import { BranchEditor } from '../components/ScopeEditors';
 import { useAuth } from '../context/AuthContext';
 import { formatDateTime, useApi } from '../lib/integrationData';
@@ -178,10 +178,20 @@ function CommitsPage({ search = '' }) {
 
   return (
     <div className="page">
-      <section className="page-hero">
-        <p className="eyebrow">Engineering</p>
-        <h1>Commits &amp; pull requests</h1>
-        <p className="page-lede">Recent Bitbucket activity, linked to Jira tickets by the keys in commit messages.</p>
+      <section className="page-hero page-hero-split">
+        <div className="hero-text">
+          <p className="eyebrow">Engineering</p>
+          <h1>Commits &amp; pull requests</h1>
+          <p className="page-lede">Recent Bitbucket activity, linked to Jira tickets by the keys in commit messages.</p>
+        </div>
+        {status.data && (
+          <HeroStats
+            items={[
+              { label: 'Repositories', value: repositories.length, sub: status.data.bitbucket.workspace ?? undefined },
+              { label: 'Jira projects', value: status.data.jira.projectKeys?.length ?? 0, sub: status.data.jira.projectKeys?.join(', ') },
+            ]}
+          />
+        )}
       </section>
 
       <div className="tabs" role="tablist" aria-label="Bitbucket activity">
@@ -209,6 +219,10 @@ function CommitsPage({ search = '' }) {
               service="bitbucket"
               message={`Bitbucket is not configured. Missing: ${data.bitbucket.missingSettings.join(', ')}.`}
             />
+          ) : !slug ? (
+            <p className="status-text">
+              No repositories are linked to {data.product.label} yet. An admin adds them on the Bitbucket page.
+            </p>
           ) : (
             <>
               <div className="audit-filters commits-filters">

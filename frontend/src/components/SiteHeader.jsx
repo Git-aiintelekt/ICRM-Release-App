@@ -1,5 +1,6 @@
 import { useAuth } from '../context/AuthContext';
 import { Link, navigate } from '../lib/router';
+import ProductPicker from './ProductPicker';
 import ThemeMenu from './ThemeMenu';
 
 const LOGO_URL = `${import.meta.env.BASE_URL}favicon.ico`;
@@ -51,6 +52,7 @@ function SiteHeader({ pathname, publicPage, menuOpen, onToggleMenu }) {
             Release <span className="brand-sub">Manager</span>
           </span>
         </Link>
+        {user && !user.mustChangePassword && <ProductPicker canAdd={user.isAdmin} />}
 
         <div className="site-header-spacer" />
 

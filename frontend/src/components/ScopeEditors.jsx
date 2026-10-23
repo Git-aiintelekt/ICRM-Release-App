@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { addScope, removeScope } from '../services/integrationsService';
+import { linkRepository, unlinkRepository } from '../services/productService';
 
 const BRANCH_RE = /^[A-Za-z0-9._/-]+$/;
 const SLUG_RE = /^[A-Za-z0-9._-]+$/;
@@ -114,33 +115,36 @@ export function BranchEditor({ status, slug, onChange }) {
   );
 }
 
-// Admins: which Bitbucket repositories the app shows. .env ones can be removed (and added back) too.
-export function RepositoryEditor({ status, onChange }) {
+// Admins: which Bitbucket repositories a product shows (status: the integration status as that product sees it).
+// Removing one only unlinks it from this product; adding one the app doesn't have yet checks it in Bitbucket first.
+export function RepositoryEditor({ status, product, onChange }) {
   const [slug, setSlug] = useState('');
   const { busy, error, run } = useScopeRun(onChange);
-  const base = status.bitbucket.baseRepositories ?? [];
-  const added = status.scope.entries.filter((e) => e.kind === 'REPOSITORY');
+  const linked = status.bitbucket.repositories;
   const invalid = slug.trim() && !SLUG_RE.test(slug.trim());
 
   const remove = (name) => {
-    if (!window.confirm(`Remove ${name} from this app? Its added branches are removed too. The repository itself isn't changed.`)) {
+    if (!window.confirm(`Remove ${name} from ${product.label}? Other products keep it, and the repository itself isn't changed.`)) {
       return;
     }
-    const row = added.find((e) => e.value === name);
-    run(() => (row ? removeScope(row.id) : addScope({ kind: 'REPOSITORY_HIDDEN', value: name })));
+    run(() => unlinkRepository(product.id, name));
   };
   const add = async (event) => {
     event.preventDefault();
-    if (await run(() => addScope({ kind: 'REPOSITORY', value: slug.trim() }))) setSlug('');
+    if (await run(() => linkRepository(product.id, slug.trim()))) setSlug('');
   };
-  const removed = base.filter((name) => !status.bitbucket.repositories.includes(name));
+  // Repositories the app already has (other products', or .env ones) to pick from.
+  const others = [...new Set([...(status.bitbucket.allRepositories ?? []), ...(status.bitbucket.baseRepositories ?? [])])].filter(
+    (name) => !linked.includes(name)
+  );
+  const listId = `repositories-for-${product.id}`;
 
   return (
     <div className="scope-editor">
       <Chips
-        items={status.bitbucket.repositories.map((name) => ({ key: name, label: name, onRemove: () => remove(name) }))}
+        items={linked.map((name) => ({ key: name, label: name, onRemove: () => remove(name) }))}
         busy={busy}
-        emptyText="No repositories."
+        emptyText={`No repositories for ${product.label} yet.`}
       />
       <form className="scope-add" onSubmit={add}>
         <label className="field">
@@ -151,10 +155,10 @@ export function RepositoryEditor({ status, onChange }) {
             onChange={(event) => setSlug(event.target.value)}
             placeholder="e.g. icrm-base-framework-master"
             maxLength={100}
-            list="removed-repositories"
+            list={listId}
           />
-          <datalist id="removed-repositories">
-            {removed.map((name) => (
+          <datalist id={listId}>
+            {others.map((name) => (
               <option key={name} value={name} />
             ))}
           </datalist>
@@ -163,7 +167,7 @@ export function RepositoryEditor({ status, onChange }) {
           {busy ? 'Checking…' : 'Add repository'}
         </button>
       </form>
-      {removed.length > 0 && <p className="cell-sub">Removed: {removed.join(', ')}. Add one again to bring it back.</p>}
+      {others.length > 0 && <p className="cell-sub">Also in the app: {others.join(', ')}.</p>}
       {invalid && <p className="form-error">A repository slug contains only letters, digits, &apos;.&apos;, &apos;_&apos; and &apos;-&apos;.</p>}
       {error && (
         <p className="form-error" role="alert">

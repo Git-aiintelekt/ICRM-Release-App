@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ApiState, HealthPanel, NotConfigured } from '../components/IntegrationUI';
+import { ApiState, HealthPanel, HeroStats, NotConfigured, serviceHealth } from '../components/IntegrationUI';
 import { formatNumber, useApi } from '../lib/integrationData';
 import { getDashboard } from '../services/integrationsService';
 
@@ -134,15 +134,33 @@ function ReleaseBranchTable({ rows }) {
   );
 }
 
+// Beside the title: how many releases are published, the newest one's open work, and how many integrations are connected.
+function dashboardStats(data) {
+  const rows = data.releaseBranches?.data ?? [];
+  const latest = rows[0];
+  const services = [data.status.jira, data.status.bitbucket];
+  const connected = services.filter((s) => serviceHealth(s).healthy).length;
+  return [
+    { label: 'Releases', value: formatNumber(rows.length), sub: 'published' },
+    latest
+      ? { label: 'Latest', value: latest.version, sub: `${formatNumber(latest.issues.open)} open · ${formatNumber(latest.bugs.open)} open bugs` }
+      : { label: 'Latest', value: '—', sub: 'none published yet' },
+    { label: 'Integrations', value: `${connected} / ${services.length}`, sub: 'connected' },
+  ];
+}
+
 function DashboardPage() {
   const dashboard = useApi(() => getDashboard(), []);
 
   return (
     <div className="page dashboard-page">
-      <section className="page-hero">
-        <p className="eyebrow">Overview</p>
-        <h1>Dashboard</h1>
-        <p className="page-lede">Live Jira ticket counts of the published release branches.</p>
+      <section className="page-hero page-hero-split">
+        <div className="hero-text">
+          <p className="eyebrow">Overview</p>
+          <h1>Dashboard</h1>
+          <p className="page-lede">Live Jira ticket counts of the published release branches.</p>
+        </div>
+        {dashboard.data && <HeroStats items={dashboardStats(dashboard.data)} />}
       </section>
 
       <ApiState state={dashboard} loadingText="Loading live data from Jira…">

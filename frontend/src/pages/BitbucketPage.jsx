@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ApiState, Pager } from '../components/IntegrationUI';
+import { ApiState, HeroStats, Pager } from '../components/IntegrationUI';
 import { BranchEditor, RepositoryEditor } from '../components/ScopeEditors';
 import { useAuth } from '../context/AuthContext';
-import { formatDateTime, useApi } from '../lib/integrationData';
+import { useProduct } from '../context/ProductContext';
+import { formatDateTime, formatNumber, useApi } from '../lib/integrationData';
 import { Link } from '../lib/router';
 import { getBranches, getIntegrationStatus, getRepositories } from '../services/integrationsService';
 
@@ -157,9 +158,25 @@ function Branches({ slug, status, onScopeChange }) {
   );
 }
 
+// Beside the title: the linked repositories, the branches they're limited to, and the workspace.
+function bitbucketStats(data) {
+  const repos = data.repositories.filter((r) => !r.error);
+  // The branches added to this product's or client's repositories, each name once: the same release branch in two
+  // repositories counts as one.
+  const limited = Object.entries(data.branches ?? {}).filter(([, names]) => names.length > 0);
+  const branches = new Set(limited.flatMap(([, names]) => names)).size;
+  const where = limited.length > 1 ? `in ${formatNumber(limited.length)} repositories` : 'added in Settings';
+  return [
+    { label: 'Repositories', value: formatNumber(data.repositories.length), sub: `${formatNumber(repos.filter((r) => r.isPrivate).length)} private` },
+    { label: 'Branches', value: branches ? formatNumber(branches) : 'All', sub: branches ? where : 'no branch limit' },
+    { label: 'Workspace', value: data.workspace ?? '—', text: true, wide: true },
+  ];
+}
+
 function BitbucketPage() {
   const repos = useApi(() => getRepositories(), []);
   const { user } = useAuth();
+  const { product } = useProduct();
   const status = useApi(() => (user?.isAdmin ? getIntegrationStatus() : Promise.resolve(null)), [user?.isAdmin]);
   const [selected, setSelected] = useState(null);
   const [managing, setManaging] = useState(false);
@@ -173,10 +190,13 @@ function BitbucketPage() {
 
   return (
     <div className="page">
-      <section className="page-hero">
-        <p className="eyebrow">Engineering</p>
-        <h1>Bitbucket repositories</h1>
-        <p className="page-lede">Repositories linked to this app, with their branches.</p>
+      <section className="page-hero page-hero-split">
+        <div className="hero-text">
+          <p className="eyebrow">Engineering</p>
+          <h1>Bitbucket repositories</h1>
+          <p className="page-lede">Repositories linked to this app, with their branches.</p>
+        </div>
+        {repos.data && <HeroStats items={bitbucketStats(repos.data)} />}
       </section>
 
       {user?.isAdmin && status.data && (
@@ -189,7 +209,7 @@ function BitbucketPage() {
           </div>
           {managing && (
             <div className="edit-panel">
-              <RepositoryEditor status={status.data} onChange={scopeChanged} />
+              <RepositoryEditor status={status.data} product={status.data.product} onChange={scopeChanged} />
             </div>
           )}
         </section>
@@ -199,6 +219,12 @@ function BitbucketPage() {
         {(data) => (
           <>
             <p className="settings-hint">Workspace: {data.workspace}</p>
+            {data.repositories.length === 0 && (
+              <p className="status-text">
+                No repositories are linked to {product?.label ?? 'this product'} yet.
+                {user?.isAdmin ? ' Use Add / remove repositories above.' : ' An admin can add them.'}
+              </p>
+            )}
             <div className="repo-grid">
               {data.repositories.map((repo) => (
                 <RepositoryCard key={repo.slug} repo={repo} selected={repo.slug === slug} onSelect={setSelected} />

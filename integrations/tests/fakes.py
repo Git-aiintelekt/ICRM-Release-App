@@ -87,6 +87,21 @@ class FakeHttp:
         return [c["body"] for c in self.calls if path_part in c["path"]]
 
 
+class FakeProduct:
+    """A releases.Product without the database."""
+
+    def __init__(self, id=1, name="iCRM"):
+        self.id = id
+        self.pk = id
+        self.name = name
+        self.label = name
+        self.parent_id = None
+        self.public_key = f"key-of-product-{id}"
+
+    def __str__(self):
+        return self.name
+
+
 class FakeUser:
     def __init__(self, *, admin=False, jira=False, id=7, username="tester@example.test"):
         self.id = id

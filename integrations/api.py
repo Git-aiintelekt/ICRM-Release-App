@@ -8,6 +8,8 @@ Connection settings: FULLADMIN enters the Jira / Bitbucket URL, accounts and tok
 /api/integrations/credentials, audited as INTEGRATION_SETTINGS); tokens are never sent back.
 Release notes from Bitbucket: FULLADMIN lists the versions that have a release/ branch and drafts one version's
 notes from its commits and Jira (release_generator.py). Nothing is saved: the draft is published like an upload.
+Products: every screen shows the repositories linked to the product of the request (releases.products); FULLADMIN
+links and unlinks them (POST / DELETE /api/integrations/products/<id>/repositories, audited as PRODUCT_CHANGE).
 Failures of one service come back as {"detail": "..."} with 400/404/502/503; the dashboard reports each section
 separately, so one service being down doesn't hide the other.
 """
@@ -24,7 +26,8 @@ from audit import models as audit
 from audit.service import record
 from config.api import IsAdmin
 from jira.api import JiraAccess
-from releases.models import ReleaseItem, ReleaseVersion
+from releases import products
+from releases.models import Product, ProductRepository, ReleaseItem, ReleaseVersion
 
 from . import bitbucket_client, cache, credentials, jira_client, release_generator, scope
 from .bitbucket_client import BRANCH_RE, SLUG_RE, BitbucketClient
@@ -83,22 +86,25 @@ def _branches(request, slug, sc) -> list[str]:
     return [asked] if asked else allowed
 
 
-def _app_versions() -> list[str]:
-    return list(ReleaseVersion.objects.order_by("-release_date").values_list("version", flat=True))
+def _app_versions(product) -> list[str]:
+    return list(ReleaseVersion.objects.filter(product_id=product.id).order_by("-release_date").values_list("version", flat=True))
 
 
 def _service_status(module, service) -> dict:
     return {"configured": module.is_configured(), "missingSettings": module.missing_settings(), **cache.health(service)}
 
 
-def status_json(sc=None) -> dict:
+def status_json(product, sc=None) -> dict:
+    """`bitbucket.repositories`: the product's; `allRepositories`: every repository linked to the app."""
     sc = sc or scope.current()
     return {
         "scope": sc,
+        "product": products.product_json(product),
         "jira": {**_service_status(jira_client, jira_client.SERVICE), "baseUrl": credentials.get("JIRA_BASE_URL") or None,
                  "projectKeys": jira_client.project_keys(), "baseProjectKeys": jira_client.base_project_keys()},
         "bitbucket": {**_service_status(bitbucket_client, bitbucket_client.SERVICE),
-                      "workspace": credentials.get("BITBUCKET_WORKSPACE") or None, "repositories": bitbucket_client.repositories(),
+                      "workspace": credentials.get("BITBUCKET_WORKSPACE") or None, "repositories": bitbucket_client.repositories(product),
+                      "allRepositories": bitbucket_client.repositories(),
                       "baseRepositories": bitbucket_client.base_repositories()},
         "cacheSeconds": settings.INTEGRATION_CACHE_SECONDS,
     }
@@ -109,7 +115,7 @@ def status_json(sc=None) -> dict:
 @api_view(["GET"])
 @permission_classes([JiraAccess])
 def status(request):
-    return Response(status_json())
+    return Response(status_json(products.from_request(request)))
 
 
 @api_view(["POST"])
@@ -132,7 +138,7 @@ def refresh(request):
             outcomes.append(f"{name}: failed")
     # Outcome only: error texts stay out of the audit log.
     record(request, audit.INTEGRATION_REFRESH, request.user, target="integrations", details="; ".join(outcomes))
-    return Response({**status_json(), "checks": checks})
+    return Response({**status_json(products.from_request(request)), "checks": checks})
 
 
 # ---- Jira ----
@@ -193,7 +199,7 @@ def jira_issues(request):
         raise serializers.ValidationError({"createdTo": "The end date is before the start date."})
     client = JiraClient()
     release = (params.get("release") or "").strip()
-    keys = _release_keys(client, release) if release else None
+    keys = _release_keys(client, products.from_request(request), release) if release else None
     jql = client.build_jql(text=text, issue_types=_names(request, "type"), statuses=_names(request, "status"),
                            state=state, fix_versions=_fix_versions(request, scope.current()),
                            created_from=created_from, created_to=created_to, keys=keys)
@@ -203,11 +209,12 @@ def jira_issues(request):
     return Response({**client.search(jql, page_token=token, limit=limit), "jql": shown})
 
 
-def _release_keys(client, version: str) -> list[str]:
+def _release_keys(client, product, version: str) -> list[str]:
     """The Jira IDs of a published release (found in its release branch's commits) that Jira shows this account."""
-    if not ReleaseVersion.objects.filter(version=version).exists():
-        raise serializers.ValidationError({"release": f"No published release {version}."})
-    keys = sorted({k.upper() for k in ReleaseItem.objects.filter(release_version__version=version)
+    if not ReleaseVersion.objects.filter(product_id=product.id, version=version).exists():
+        raise serializers.ValidationError({"release": f"No published {product.label} release {version}."})
+    keys = sorted({k.upper() for k in ReleaseItem.objects.filter(release_version__product_id=product.id,
+                                                                 release_version__version=version)
                    .exclude(jira_id__isnull=True).exclude(jira_id="").values_list("jira_id", flat=True)})
     known = client.issue_statuses(keys)
     return [k for k in keys if k in known]
@@ -217,7 +224,8 @@ def _release_keys(client, version: str) -> list[str]:
 @permission_classes([JiraAccess])
 @service_errors
 def jira_releases(request):
-    return Response(JiraClient().release_summaries(_app_versions(), only=scope.current()["fixVersions"]))
+    return Response(JiraClient().release_summaries(_app_versions(products.from_request(request)),
+                                                   only=scope.current()["fixVersions"]))
 
 
 # ---- Bitbucket ----
@@ -253,14 +261,17 @@ def with_jira_status(items: list[dict]) -> tuple[list[dict], str | None]:
 @permission_classes([JiraAccess])
 @service_errors
 def bitbucket_repositories(request):
+    """The product's or client's repositories, and the branches added to each of them (other products' left out)."""
     client = BitbucketClient()
+    slugs = bitbucket_client.repositories(products.from_request(request))
     repos = []
-    for slug in bitbucket_client.repositories():
+    for slug in slugs:
         try:
             repos.append(client.repository(slug))
         except IntegrationError as exc:
             repos.append({"slug": slug, "workspace": client.workspace, "error": str(exc)})
-    return Response({"workspace": client.workspace, "repositories": repos, "branches": scope.current()["branches"]})
+    branches = {slug: names for slug, names in scope.current()["branches"].items() if slug in slugs}
+    return Response({"workspace": client.workspace, "repositories": repos, "branches": branches})
 
 
 @api_view(["GET"])
@@ -317,12 +328,13 @@ def _status_counts(keys, issues) -> dict:
             "doneOther": len(done) - resolved - closed}
 
 
-def _release_branch_counts(client, sc) -> list[dict]:
+def _release_branch_counts(client, product, sc) -> list[dict]:
     """Per published release from a release/ branch in the scope: its Jira issues (the published items' Jira IDs, i.e.
     the ones found in the branch's commits) with their live status, all and bugs only. Newest version first."""
     rows = []
-    for entry in release_generator.published_branches(sc["branches"]):
-        keys = sorted({k.upper() for k in ReleaseItem.objects.filter(release_version__version=entry["version"])
+    for entry in release_generator.published_branches(product, sc["branches"]):
+        keys = sorted({k.upper() for k in ReleaseItem.objects.filter(release_version__product_id=product.id,
+                                                                     release_version__version=entry["version"])
                        .exclude(jira_id__isnull=True).exclude(jira_id="").values_list("jira_id", flat=True)})
         issues = client.issue_statuses(keys)
         bugs = [k for k in keys if (issues.get(k, {}).get("issueType") or "") in settings.JIRA_BUG_ISSUE_TYPES]
@@ -338,15 +350,16 @@ def dashboard(request):
     """The ticket counts of the published release branches (none published yet: no counts) and integration health."""
     body = {}
     sc = scope.current()
+    product = products.from_request(request)
     if jira_client.is_configured():
         client = JiraClient()
-        body["releaseBranches"] = _section(lambda: _release_branch_counts(client, sc))
+        body["releaseBranches"] = _section(lambda: _release_branch_counts(client, product, sc))
     else:
         body["releaseBranches"] = {"data": None, "error": None, "notConfigured": True}
     if bitbucket_client.is_configured():
         # Nothing else here reads Bitbucket: one cached repository read keeps its health current.
         _section(lambda: BitbucketClient().repository(bitbucket_client.repositories()[0]))
-    body["status"] = status_json(sc)
+    body["status"] = status_json(product, sc)
     return Response(body)
 
 
@@ -373,7 +386,7 @@ class ScopeSerializer(serializers.Serializer):
             if data["value"] in jira_client.base_project_keys():
                 raise serializers.ValidationError({"value": f"{data['value']} is already included (JIRA_PROJECT_KEYS)."})
         elif data["kind"] == VERSION_START:
-            if data["repository"] not in _app_versions():
+            if data["repository"] not in _app_versions(products.from_request(self.context["request"])):
                 raise serializers.ValidationError({"repository": "Choose one of the release versions."})
             try:
                 data["value"] = date.fromisoformat(data["value"]).isoformat()
@@ -422,7 +435,7 @@ def _scope_changed(request, row, verb) -> Response:
     scope.forget()
     cache.invalidate()
     record(request, audit.INTEGRATION_SCOPE, request.user, target=str(row), details=f"{verb} {_scope_label(row)}")
-    return Response(status_json(), status=201 if verb == "added" else 200)
+    return Response(status_json(products.from_request(request)), status=201 if verb == "added" else 200)
 
 
 def _drop_branches(slug) -> None:
@@ -453,7 +466,7 @@ def _repository_add(request, slug):
 @permission_classes([IsAdmin])
 @service_errors
 def scope_add(request):
-    s = ScopeSerializer(data=request.data)
+    s = ScopeSerializer(data=request.data, context={"request": request})
     s.is_valid(raise_exception=True)
     kind, repository, value = s.validated_data["kind"], s.validated_data["repository"], s.validated_data["value"]
     if kind == REPOSITORY:
@@ -539,7 +552,7 @@ def credentials_settings(request):
         # Names only: values, and tokens above all, stay out of the audit log.
         record(request, audit.INTEGRATION_SETTINGS, request.user, target="integrations",
                details="changed " + ", ".join(changed))
-    return Response({"fields": credentials_json(), "status": status_json()})
+    return Response({"fields": credentials_json(), "status": status_json(products.from_request(request))})
 
 
 # ---- release notes drafted from Bitbucket release branches ----
@@ -548,7 +561,7 @@ def credentials_settings(request):
 @permission_classes([IsAdmin])
 @service_errors
 def release_versions(request):
-    return Response(release_generator.versions())
+    return Response(release_generator.versions(products.from_request(request)))
 
 
 class GenerateSerializer(serializers.Serializer):
@@ -561,5 +574,58 @@ class GenerateSerializer(serializers.Serializer):
 def release_draft(request):
     s = GenerateSerializer(data=request.data)
     s.is_valid(raise_exception=True)
-    return Response(release_generator.generate(s.validated_data["version"]))
+    return Response(release_generator.generate(products.from_request(request), s.validated_data["version"]))
 
+
+# ---- Products: which repositories each product's screens show (admins) ----
+
+class ProductRepositorySerializer(serializers.Serializer):
+    repository = serializers.RegexField(SLUG_RE, error_messages={
+        "invalid": "A repository slug contains only letters, digits, '.', '_' and '-' (the last part of its Bitbucket URL)."})
+
+
+def _product_or_404(product_id) -> Product | None:
+    return Product.objects.filter(pk=product_id).first()
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+@service_errors
+def product_repository_add(request, product_id):
+    """Link a repository to the product. One the app doesn't have yet is checked in Bitbucket and added first."""
+    product = _product_or_404(product_id)
+    if product is None:
+        return Response({"detail": "Product not found."}, status=404)
+    s = ProductRepositorySerializer(data=request.data)
+    s.is_valid(raise_exception=True)
+    slug = s.validated_data["repository"]
+    if slug in bitbucket_client.repositories(product):
+        raise serializers.ValidationError({"repository": f"{slug} is already a repository of {product.label}."})
+    if slug not in bitbucket_client.repositories():
+        hidden = IntegrationScope.objects.filter(kind=REPOSITORY_HIDDEN, value=slug).first()
+        if hidden is not None:  # a .env repository that was removed: back in the list
+            hidden.delete()
+        else:
+            _check_exists(REPOSITORY, "", slug)
+            IntegrationScope.objects.create(kind=REPOSITORY, value=slug, added_by=request.user)
+        scope.forget()
+    ProductRepository.objects.get_or_create(product=product, repository=slug)
+    cache.invalidate()
+    record(request, audit.PRODUCT_CHANGE, request.user, target=product.label, details=f"linked repository {slug}")
+    return Response(status_json(product), status=201)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAdmin])
+def product_repository_remove(request, product_id, slug):
+    """Unlink a repository from the product. It stays in the app (other products may use it); a repository no
+    product uses any more just isn't shown anywhere."""
+    product = _product_or_404(product_id)
+    if product is None:
+        return Response({"detail": "Product not found."}, status=404)
+    deleted, _ = ProductRepository.objects.filter(product=product, repository=slug).delete()
+    if not deleted:
+        return Response({"detail": f"{slug} is not a repository of {product.label}."}, status=404)
+    cache.invalidate()
+    record(request, audit.PRODUCT_CHANGE, request.user, target=product.label, details=f"unlinked repository {slug}")
+    return Response(status_json(product))

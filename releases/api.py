@@ -1,12 +1,17 @@
 """Release endpoints, same URLs and JSON as python-backend.
 
 Signed in: GET /api/releases, /api/releases/<id>, /api/releases/version/<version>, /api/release-images/<id>
-Public:   GET /api/public/releases, /api/public/releases/version/<version>, /api/public/release-images/<id>, only while
-          PUBLIC_RELEASE_NOTES=true (404 otherwise): the same release notes without Jira numbers, for the public page.
+Public:   GET /api/public/releases, /api/public/releases/version/<version>, /api/public/release-images/<id>,
+          /api/public/product, only while PUBLIC_RELEASE_NOTES=true (404 otherwise): the same release notes without Jira
+          numbers, for the public page. ?key=<the product's public key> picks the product or client (never its id).
 Admins:   POST /api/admin/releases/parse (read a .docx or .csv, save nothing), POST /api/admin/releases (publish),
           and the edit endpoints below; POST /api/admin/releases/<id>/items/import adds a CSV's changes to a version. Every edit returns the whole updated release.
           GET /api/admin/releases/<id>/notes-file and POST /api/admin/releases/<id>/email: one release's notes as an
           HTML file, downloaded or emailed as an attachment.
+Products: GET /api/products (signed in; the header's product and client pickers); admins POST /api/admin/products
+          (with parentId: a client of that product), DELETE /api/admin/products/<id> and POST
+          /api/admin/products/<id>/public-key (a new public link; the old one stops working). Every release call
+          is about the product or client of the request (products.from_request).
 """
 import logging
 import re
@@ -20,6 +25,7 @@ from django.utils import timezone
 from rest_framework import exceptions, serializers, status
 from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
 from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from audit import models as audit
@@ -29,7 +35,9 @@ from config.api import CamelCaseJSONParser, IsAdmin, IsSignedIn, NotFound, Publi
 from config.mail import delivery_mode
 from integrations import release_generator
 
-from .models import CATEGORY_ORDER, Category, ReleaseImage, ReleaseItem, ReleaseUpload, ReleaseVersion, Status
+from . import products
+from .models import CATEGORY_ORDER, Category, Product, ReleaseImage, ReleaseItem, ReleaseUpload, ReleaseVersion, Status
+from .models import new_public_key as new_key
 from .services import image_store, release_email
 from .services.csv_parser import CsvParseError, parse_csv
 from .services.docx_parser import MAX_BYTES, DocxParseError, parse_docx
@@ -41,7 +49,7 @@ log = logging.getLogger(__name__)
 MAX_IMAGES = 40
 MAX_RECIPIENTS = 20
 VERSION_PATTERN = r"^[0-9A-Za-z][0-9A-Za-z._-]*$"
-EXISTING_VERSION = ("Version {version} already exists. An upload can only add a new version: edit, add or delete its "
+EXISTING_VERSION = ("{product} version {version} already exists. An upload can only add a new version: edit, add or delete its "
                     "changes on the Release Notes page, or delete the whole version first and upload it again.")
 
 
@@ -50,7 +58,7 @@ EXISTING_VERSION = ("Version {version} already exists. An upload can only add a 
 @api_view(["GET"])
 @permission_classes([IsSignedIn])
 def list_releases(request):
-    return Response(all_releases_json())
+    return Response(all_releases_json(products.from_request(request)))
 
 
 def _release_or_404(**lookup) -> dict:
@@ -70,7 +78,7 @@ def release_by_id(request, release_id):
 @api_view(["GET"])
 @permission_classes([IsSignedIn])
 def release_by_version(request, version):
-    return Response(_release_or_404(version=version))
+    return Response(_release_or_404(version=version, product=products.from_request(request)))
 
 
 def _signed_in(request) -> bool:
@@ -149,19 +157,37 @@ def _public_or_404() -> None:
 @throttle_classes([PublicReadThrottle])
 def public_releases(request):
     _public_or_404()
-    return Response(public_release_json(all_releases_json()))
+    product = products.from_public_request(request)
+    return Response(public_release_json(all_releases_json(product), request.query_params.get("key")))
 
 
 @api_view(["GET"])
 @throttle_classes([PublicReadThrottle])
 def public_release_by_version(request, version):
     _public_or_404()
-    return Response(public_release_json([_release_or_404(version=version)])[0])
+    product = products.from_public_request(request)
+    return Response(public_release_json([_release_or_404(version=version, product=product)],
+                                        request.query_params.get("key"))[0])
+
+
+@api_view(["GET"])
+@throttle_classes([PublicReadThrottle])
+def public_product(request):
+    """The name the public page shows for its link's product or client."""
+    _public_or_404()
+    return Response({"label": products.from_public_request(request).label})
 
 
 def public_release_image(request, image_id):
-    """Every screenshot belongs to a release, so all of them are as public as the release notes."""
+    """A screenshot of the link's product or client (?key=), as public as its release notes; another product's is a
+    404, so screenshot numbers can't be tried one by one."""
     _public_or_404()
+    try:
+        product = products.from_public_request(Request(request))
+    except exceptions.NotFound:
+        raise Http404("Image not found.")
+    if not ReleaseImage.objects.filter(pk=image_id, release_version__product_id=product.id).exists():
+        raise Http404("Image not found.")
     return _image_response(request, image_id, "public, max-age=86400")
 
 
@@ -265,7 +291,8 @@ def parse_upload(request):
         parsed = parse_csv(data) if name.endswith(".csv") else parse_docx(data)
     except (DocxParseError, CsvParseError) as exc:
         raise bad_request(str(exc))
-    existing = parsed.version is not None and ReleaseVersion.objects.filter(version=parsed.version).exists()
+    product = products.from_request(request)
+    existing = parsed.version is not None and ReleaseVersion.objects.filter(product=product, version=parsed.version).exists()
     return Response({
         "fileName": upload.name,
         "version": parsed.version,
@@ -306,13 +333,15 @@ def publish(request):
     (add / edit / delete), or delete the whole version first and upload it again.
     """
     body = _valid(PublishSerializer, request)
-    if ReleaseVersion.objects.filter(version=body["version"]).exists():
-        return Response({"detail": EXISTING_VERSION.format(version=body["version"])}, status=status.HTTP_409_CONFLICT)
+    product = products.from_request(request)
+    existing = EXISTING_VERSION.format(product=product.label, version=body["version"])
+    if ReleaseVersion.objects.filter(product=product, version=body["version"]).exists():
+        return Response({"detail": existing}, status=status.HTTP_409_CONFLICT)
     saved_files: list[str] = []
     try:
         with transaction.atomic():
-            release = ReleaseVersion.objects.create(version=body["version"], release_date=body["release_date"],
-                                                    description="", latest=False)
+            release = ReleaseVersion.objects.create(product=product, version=body["version"],
+                                                    release_date=body["release_date"], description="", latest=False)
             release.description = body["summary"].strip()
             release.status = body["status"]
             release.planned_label = _text(body.get("planned_label")) if body["status"] == Status.UPCOMING else None
@@ -332,21 +361,21 @@ def publish(request):
             _store_images(release, body["images"], None, saved_files)
 
             release.save()
-            refresh_latest()
+            refresh_latest(product)
 
             image_count = len(body["images"]) + sum(len(i.get("images", [])) for i in body["items"])
             ReleaseUpload.objects.create(release_version=release, file_name=body["file_name"],
                                          item_count=len(body["items"]), mode="new", uploaded_by=request.user)
             record(request, audit.RELEASE_PUBLISH, request.user, target=str(release),
                    details=f"new {len(body['items'])} items, {image_count} screenshots from {body['file_name']}")
-            linked = release_generator.link_branches(release.version, body["branches"], request.user)
+            linked = release_generator.link_branches(product, release.version, body["branches"], request.user)
             if linked:
                 record(request, audit.INTEGRATION_SCOPE, request.user, target=str(release),
                        details="added release branches " + ", ".join(linked))
     except IntegrityError:  # the same version was uploaded at the same moment
         for file_name in saved_files:
             image_store.delete(file_name)
-        return Response({"detail": EXISTING_VERSION.format(version=body["version"])}, status=status.HTTP_409_CONFLICT)
+        return Response({"detail": existing}, status=status.HTTP_409_CONFLICT)
     except Exception:
         for file_name in saved_files:
             image_store.delete(file_name)
@@ -407,7 +436,7 @@ def release_detail(request, release_id):
                 setattr(release, field, _lines(body[field]))
         release.edited_at = timezone.now()
         release.save()
-        refresh_latest()  # a version that becomes "coming soon", or is released, can change which one is latest
+        refresh_latest(release.product)  # a version that becomes "coming soon", or is released, can change which one is latest
         record(request, audit.RELEASE_EDIT, request.user, target=str(release),
                details="edited " + ", ".join(FIELD_NAMES.get(f, f) for f in sorted(changed)))
     return Response(one_release_json(pk=release.pk))
@@ -417,12 +446,12 @@ def _delete_release(request, release):
     with transaction.atomic():
         count = release.images.count()
         record(request, audit.RELEASE_DELETE, request.user, target=str(release), details=f"deleted with {count} screenshots")
-        unlinked = release_generator.unlink_version(release.version)
+        unlinked = release_generator.unlink_version(release.product, release.version)
         if unlinked:
             record(request, audit.INTEGRATION_SCOPE, request.user, target=str(release),
                    details="removed release branches " + ", ".join(unlinked))
         release.delete()  # items, screenshots (and their files) and upload history go with it
-        refresh_latest()
+        refresh_latest(release.product)
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -589,7 +618,7 @@ def email_release(request, release_id):
                                       sender_name=getattr(user, "display_name", None) or user.username,
                                       reply_to=getattr(user, "email", None))
     mode = delivery_mode()
-    target = f"Version {release['version']}"
+    target = f"{release['productName']} {release['version']}"
     try:
         email.send(fail_silently=False)
     except (smtplib.SMTPException, OSError) as exc:
@@ -601,3 +630,85 @@ def email_release(request, release_id):
     record(request, audit.RELEASE_EMAIL, user, target=target,
            details=f"{mode}: to {', '.join(to)}" + (f"; cc {', '.join(cc)}" if cc else ""))
     return Response({"delivery": mode, "recipients": to + cc, "attachment": release_email.file_name(release)})
+
+
+# ---- Products: the header's picker (anyone), added and removed by admins ----
+
+class ProductSerializer(serializers.Serializer):
+    """A product, or with parent_id a client of that product (clients have no clients of their own)."""
+
+    name = serializers.CharField(min_length=1, max_length=50)
+    parent_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+    def validate(self, data):
+        name = " ".join(data["name"].split())
+        if not name or any(ord(c) < 32 for c in name):
+            raise serializers.ValidationError({"name": "Invalid name."})
+        parent = None
+        if data["parent_id"] is not None:
+            parent = Product.objects.filter(pk=data["parent_id"], parent__isnull=True).first()
+            if parent is None:
+                raise serializers.ValidationError({"parentId": "Clients are added to a product, e.g. IUC."})
+        if Product.objects.filter(parent=parent, name__iexact=name).exists():
+            what = f"a client of {parent.name}" if parent else "a product"
+            raise serializers.ValidationError({"name": f"{name} is already {what}."})
+        return {"name": name, "parent": parent}
+
+
+@api_view(["GET"])
+@permission_classes([IsSignedIn])
+def list_products(request):
+    admin = bool(getattr(request.user, "is_admin", False))
+    return Response([products.product_json(p, admin) for p in products.products()])
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+@parser_classes([CamelCaseJSONParser])
+def add_product(request):
+    body = _valid(ProductSerializer, request, context={"request": request})
+    name, parent = body["name"], body["parent"]
+    order = (Product.objects.aggregate(m=Max("display_order"))["m"] or 0) + 1
+    try:
+        product = Product.objects.create(name=name, parent=parent, display_order=order)
+    except IntegrityError:  # added at the same moment
+        raise bad_request(f"{name} already exists.")
+    record(request, audit.PRODUCT_CHANGE, request.user, target=product.label,
+           details=f"added client of {parent.name}" if parent else "added product")
+    return Response(products.product_json(product, admin=True), status=status.HTTP_201_CREATED)
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAdmin])
+def remove_product(request, product_id):
+    """A product or client with release notes can't be removed (delete its versions first), nor can a product with
+    clients (remove them first), nor the last product."""
+    product = Product.objects.select_related("parent").filter(pk=product_id).first()
+    if product is None:
+        raise not_found("Product not found.")
+    count = product.releases.count()
+    if count:
+        raise bad_request(f"{product.label} has {count} release version(s). Delete them on the Release Notes page "
+                          "first, then remove it.")
+    clients = product.clients.count()
+    if clients:
+        raise bad_request(f"{product.name} has {clients} client(s). Remove them first.")
+    if product.parent_id is None and Product.objects.filter(parent__isnull=True).count() == 1:
+        raise bad_request("At least one product must stay; add another one first.")
+    name = product.label
+    product.delete()  # its repository links go with it; the repositories themselves stay in the app
+    record(request, audit.PRODUCT_CHANGE, request.user, target=name, details="removed product")
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def new_public_key(request, product_id):
+    """A new public link for the product or client, e.g. after the old one was shared too widely."""
+    product = Product.objects.select_related("parent").filter(pk=product_id).first()
+    if product is None:
+        raise not_found("Product not found.")
+    product.public_key = new_key()
+    product.save(update_fields=["public_key"])
+    record(request, audit.PRODUCT_CHANGE, request.user, target=product.label, details="new public link")
+    return Response(products.product_json(product, admin=True))

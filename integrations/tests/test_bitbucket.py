@@ -51,6 +51,15 @@ class BitbucketTests(IntegrationTestCase):
         self.assertEqual(repo["url"], "https://bitbucket.test/acme/icrm-base-framework-master")
 
     @override_settings(BITBUCKET_REPOSITORIES=["icrm-base-framework-master", "sql_group"])
+    def test_only_the_products_repositories_and_their_branches_are_listed(self):
+        self.serve(bitbucket_and_jira())
+        self.product_repositories = ["icrm-base-framework-master"]  # sql_group belongs to another product
+        self.scope["branches"] = {"icrm-base-framework-master": ["release/a"], "sql_group": ["main", "dev"]}
+        body = self.call(api.bitbucket_repositories, VIEWER).data
+        self.assertEqual([r["slug"] for r in body["repositories"]], ["icrm-base-framework-master"])
+        self.assertEqual(body["branches"], {"icrm-base-framework-master": ["release/a"]})
+
+    @override_settings(BITBUCKET_REPOSITORIES=["icrm-base-framework-master", "sql_group"])
     def test_second_repository_is_configuration_only(self):
         http = self.serve(bitbucket_and_jira())
         http.on("GET", "/repositories/acme/sql_group", (404, {"error": {"message": "Repository not found"}}))

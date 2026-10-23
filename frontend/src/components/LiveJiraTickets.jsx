@@ -33,7 +33,6 @@ function initialFilters(search) {
     q: params.get('q') ?? '',
     types: params.getAll('type'),
     status: params.get('status') ?? '',
-    fixVersion: params.get('fixVersion') ?? '',
     state: STATES.some((s) => s.value === params.get('state')) ? params.get('state') : '',
     release: params.get('release') ?? '',
     createdFrom: DATE_RE.test(params.get('createdFrom') ?? '') ? params.get('createdFrom') : '',
@@ -69,12 +68,11 @@ function LiveJiraTickets({ search }) {
       release,
       type: filters.types,
       status: filters.status,
-      fixVersion: filters.fixVersion,
       state: filters.state,
       createdFrom: filters.createdFrom,
       createdTo: filters.createdTo,
     }),
-    [q, release, filters.types, filters.status, filters.fixVersion, filters.state, filters.createdFrom, filters.createdTo]
+    [q, release, filters.types, filters.status, filters.state, filters.createdFrom, filters.createdTo]
   );
   const requestKey = JSON.stringify(request);
   // New filters start again at page 1.
@@ -144,18 +142,6 @@ function LiveJiraTickets({ search }) {
             {(meta.data?.statuses ?? []).map((status) => (
               <option key={status} value={status}>
                 {status}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Fix version</span>
-          <select className="input" value={filters.fixVersion} onChange={setFilter('fixVersion')}>
-            <option value="">Any fix version</option>
-            {(meta.data?.fixVersions ?? []).map((v) => (
-              <option key={`${v.project}-${v.name}`} value={v.name}>
-                {v.name} ({v.project}
-                {v.archived ? ', archived' : ''})
               </option>
             ))}
           </select>

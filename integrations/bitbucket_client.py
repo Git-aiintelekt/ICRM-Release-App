@@ -24,11 +24,17 @@ def base_repositories() -> list[str]:
     return [slug for slug in settings.BITBUCKET_REPOSITORIES if SLUG_RE.match(slug)]
 
 
-def repositories() -> list[str]:
-    """The .env repositories an admin hasn't removed, then the ones added on the Bitbucket page."""
+def repositories(product=None) -> list[str]:
+    """The .env repositories an admin hasn't removed, then the ones added on the Bitbucket page. With a product: only
+    those linked to it (releases.ProductRepository), which is what every screen shows."""
     added, hidden = scope.repository_changes()
     base = [slug for slug in base_repositories() if slug not in hidden]
-    return base + [slug for slug in added if slug not in base and SLUG_RE.match(slug)]
+    every = base + [slug for slug in added if slug not in base and SLUG_RE.match(slug)]
+    if product is None:
+        return every
+    from releases.products import repository_slugs  # releases imports this app: imported here, not at the top
+    linked = set(repository_slugs(product))
+    return [slug for slug in every if slug in linked]
 
 
 def _auth() -> str | None:

@@ -3,7 +3,8 @@ import AccessGate from './components/AccessGate';
 import AppSidebar from './components/AppSidebar';
 import SiteHeader from './components/SiteHeader';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { PUBLIC_RELEASE_NOTES_PATH } from './lib/navigation';
+import { ProductProvider, useProduct } from './context/ProductContext';
+import { isPublicPath } from './lib/navigation';
 import { useLocation } from './lib/router';
 import AuditLogPage from './pages/AuditLogPage';
 import BitbucketPage from './pages/BitbucketPage';
@@ -35,7 +36,7 @@ const SIGNED_OUT_PAGES = ['/login', '/forgot-password', '/reset-password'];
 
 function CurrentPage({ pathname, search }) {
   const { user, checking } = useAuth();
-  if (pathname === PUBLIC_RELEASE_NOTES_PATH) {
+  if (isPublicPath(pathname)) {
     return <ReleasesPage publicView />;
   }
   if (checking) {
@@ -104,8 +105,9 @@ function CurrentPage({ pathname, search }) {
 // unless the user is an admin or was given Jira access).
 function Shell({ pathname, search }) {
   const { user } = useAuth();
+  const { product } = useProduct();
   const [menuOpen, setMenuOpen] = useState(false);
-  const publicPage = pathname === PUBLIC_RELEASE_NOTES_PATH;
+  const publicPage = isPublicPath(pathname);
   return (
     <>
       <SiteHeader
@@ -119,7 +121,8 @@ function Shell({ pathname, search }) {
           <AppSidebar pathname={pathname} open={menuOpen} onClose={() => setMenuOpen(false)} />
         )}
         <main className="site-main">
-          <CurrentPage pathname={pathname} search={search} />
+          {/* A new product: the page starts over, so everything on it is loaded for that product. */}
+          <CurrentPage key={product?.id ?? 'none'} pathname={pathname} search={search} />
         </main>
       </div>
     </>
@@ -130,7 +133,10 @@ function App() {
   const { pathname, search } = useLocation();
   return (
     <AuthProvider>
-      <Shell pathname={pathname} search={search} />
+      {/* The public page has no product picker: its link's key says which product it shows. */}
+      <ProductProvider disabled={isPublicPath(pathname)}>
+        <Shell pathname={pathname} search={search} />
+      </ProductProvider>
     </AuthProvider>
   );
 }

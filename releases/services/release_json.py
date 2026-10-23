@@ -22,6 +22,8 @@ def release_json(release: ReleaseVersion, image_url=None) -> dict:
             by_item.setdefault(image.release_item_id, []).append(image)
     return {
         "id": release.id,
+        "productId": release.product_id,
+        "productName": release.product.label,
         "version": release.version,
         "releaseDate": release.release_date.isoformat(),
         "description": release.description,
@@ -53,6 +55,7 @@ def releases_queryset():
             upcoming=Case(When(status="UPCOMING", then=Value(1)), default=Value(0), output_field=IntegerField())
         )
         .order_by("-upcoming", "-release_date")
+        .select_related("product", "product__parent")
         .prefetch_related(
             Prefetch("items", queryset=ReleaseItem.objects.order_by("display_order", "id")),
             Prefetch("images", queryset=ReleaseImage.objects.order_by("display_order", "id")),
@@ -60,8 +63,12 @@ def releases_queryset():
     )
 
 
-def all_releases_json(image_url=None) -> list[dict]:
-    return [release_json(r, image_url) for r in releases_queryset()]
+def all_releases_json(product=None, image_url=None) -> list[dict]:
+    """Every release of the product (of every product when None)."""
+    releases = releases_queryset()
+    if product is not None:
+        releases = releases.filter(product=product)
+    return [release_json(r, image_url) for r in releases]
 
 
 def one_release_json(**lookup) -> dict | None:
@@ -69,15 +76,17 @@ def one_release_json(**lookup) -> dict | None:
     return release_json(release) if release else None
 
 
-def public_release_json(releases: list[dict]) -> list[dict]:
-    """The releases as the public page shows them: no Jira numbers, screenshots from the public image URL."""
+def public_release_json(releases: list[dict], key: str | None = None) -> list[dict]:
+    """The releases as the public page shows them: no Jira numbers and no product id, screenshots from the public
+    image URL (with the link's key, without which only the first product's screenshots are served)."""
+    suffix = f"?key={key}" if key else ""
 
     def image(i: dict) -> dict:
-        return {**i, "url": f"/api/public/release-images/{i['id']}"}
+        return {**i, "url": f"/api/public/release-images/{i['id']}{suffix}"}
 
     return [
         {
-            **release,
+            **{k: v for k, v in release.items() if k != "productId"},
             "images": [image(i) for i in release["images"]],
             "items": [
                 {**{k: v for k, v in item.items() if k != "jiraId"}, "images": [image(i) for i in item["images"]]}

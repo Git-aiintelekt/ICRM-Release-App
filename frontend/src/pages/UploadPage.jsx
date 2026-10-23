@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import BitbucketDraft from '../components/BitbucketDraft';
 import { useAuth } from '../context/AuthContext';
+import { useProduct } from '../context/ProductContext';
 import { CATEGORIES, CATEGORY_ORDER, SAMPLE_CSV_URL, SAMPLE_DOC_URL, versionAnchor } from '../lib/releaseFormat';
 import { Link, navigate } from '../lib/router';
 import { parseReleaseDocument, publishRelease } from '../services/adminReleaseService';
@@ -248,6 +249,8 @@ function ImageStrip({ images, onChange, label, addLabel = 'Add screenshot' }) {
 
 function UploadPage() {
   const { user, checking } = useAuth();
+  const { product } = useProduct();
+  const productName = product?.label ?? 'iCRM';
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState(null);
   const [draft, setDraft] = useState(null);
@@ -366,12 +369,18 @@ function UploadPage() {
           the wording. Review what was found, add or change screenshots, then publish it, as a released version or as
           one that&apos;s coming soon.
         </p>
+        <p className="field-hint">
+          Publishing to <strong>{productName}</strong>. Pick another product in the header to publish there.
+        </p>
       </section>
 
       {published && (
         <div className="success-card" role="status">
           <p>
-            <strong>Version {published.version}</strong> is published
+            <strong>
+              {productName} {published.version}
+            </strong>{' '}
+            is published
             {published.status === 'UPCOMING' ? ' as coming soon' : ''} with {published.items.length} changes.
           </p>
           <Link to={`/#${versionAnchor(published.version)}`} className="button button-primary">
@@ -640,7 +649,7 @@ function UploadPage() {
             <button type="submit" className="button button-primary" disabled={missing.length > 0 || publishing}>
               {publishing
                 ? 'Publishing…'
-                : `Publish version ${draft.version || ''}${draft.status === 'UPCOMING' ? ' as coming soon' : ''}`}
+                : `Publish ${productName} ${draft.version || ''}${draft.status === 'UPCOMING' ? ' as coming soon' : ''}`}
             </button>
           </div>
         </form>

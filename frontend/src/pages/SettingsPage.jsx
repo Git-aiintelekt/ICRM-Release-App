@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { downloadAuditLogCsv, getAuditLog, getUsers, updateUserAccess } from '../services/adminSettingsService';
 import IntegrationsTab from '../components/IntegrationsTab';
+import ProductsTab from '../components/ProductsTab';
 import { useLocation } from '../lib/router';
 
 const ACTION_LABELS = {
@@ -23,6 +24,7 @@ const ACTION_LABELS = {
   LOGOUT_EVERYWHERE: 'Signed out everywhere',
   PASSWORD_CHANGE: 'Changed password',
   INTEGRATION_SETTINGS: 'Changed connection settings',
+  PRODUCT_CHANGE: 'Changed products',
 };
 
 const ACTION_FILTERS = [
@@ -45,6 +47,7 @@ const ACTION_FILTERS = [
   { value: 'LOGOUT_EVERYWHERE', label: 'Signed out everywhere' },
   { value: 'PASSWORD_CHANGE', label: 'Password changes' },
   { value: 'INTEGRATION_SETTINGS', label: 'Connection settings changes' },
+  { value: 'PRODUCT_CHANGE', label: 'Product changes' },
 ];
 
 const PAGE_SIZE = 50;
@@ -358,6 +361,7 @@ export function AuditTab() {
 const TABS = [
   { id: 'users', label: 'Users & access' },
   { id: 'audit', label: 'Audit log' },
+  { id: 'products', label: 'Products' },
   { id: 'integrations', label: 'Integrations' },
 ];
 const TAB_IDS = TABS.map((item) => item.id);
@@ -410,6 +414,7 @@ function SettingsPage() {
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="tab-panel">
         {tab === 'users' && <UsersTab />}
         {tab === 'audit' && <AuditTab />}
+        {tab === 'products' && <ProductsTab />}
         {tab === 'integrations' && <IntegrationsTab />}
       </div>
     </div>

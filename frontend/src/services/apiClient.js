@@ -20,6 +20,13 @@ export function setToken(token) {
   }
 }
 
+// The product picked in the header (ProductContext); sent with every call, so the server answers for that product.
+let productId = null;
+
+export function setProductHeader(id) {
+  productId = id;
+}
+
 export class ApiError extends Error {
   constructor(status, message) {
     super(message);
@@ -46,6 +53,7 @@ export async function apiFetch(url, { json, body, headers, ...options } = {}) {
     headers: {
       ...(json !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(productId != null ? { 'X-Product': String(productId) } : {}),
       ...headers,
     },
     body: json !== undefined ? JSON.stringify(json) : body,

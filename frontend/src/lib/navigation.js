@@ -5,6 +5,13 @@ const isAdmin = (user) => Boolean(user?.isAdmin);
 // The public release notes: read-only, the same for everyone, signed in or not (README: "Public release notes").
 export const PUBLIC_RELEASE_NOTES_PATH = '/public/release-notes';
 
+// /public/release-notes/<key>: one product's or client's public page (the key can't be guessed from another link).
+export const isPublicPath = (pathname) =>
+  pathname === PUBLIC_RELEASE_NOTES_PATH || pathname.startsWith(`${PUBLIC_RELEASE_NOTES_PATH}/`);
+export const publicKeyOf = (pathname) =>
+  isPublicPath(pathname) ? decodeURIComponent(pathname.slice(PUBLIC_RELEASE_NOTES_PATH.length + 1)) || null : null;
+export const publicLink = (key) => `${window.location.origin}${PUBLIC_RELEASE_NOTES_PATH}/${encodeURIComponent(key)}`;
+
 export const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: 'dashboard', show: canViewJira },
   { to: '/', label: 'Release Notes', icon: 'releases', show: () => true },

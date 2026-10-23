@@ -95,26 +95,30 @@ def previous_branches(client: BitbucketClient, slug: str, branches) -> list[str]
     return previous
 
 
-def published_branches(scope_branches: dict[str, list[str]]) -> list[dict]:
-    """The published releases whose release/ branch is in the scope: [{version, branches: [{repository, branch}]}]."""
+def published_branches(product, scope_branches: dict[str, list[str]]) -> list[dict]:
+    """The product's published releases whose release/ branch, in one of its repositories, is in the scope:
+    [{version, branches: [{repository, branch}]}]."""
     found: dict[str, list[dict]] = {}
+    slugs = bitbucket_client.repositories(product)
     for slug, names in scope_branches.items():
+        if slug not in slugs:
+            continue
         for name in names:
             branch = parse_branch(name)
             if branch and branch["release"]:
                 found.setdefault(branch["version"], []).append({"repository": slug, "branch": name})
-    published = set(ReleaseVersion.objects.filter(version__in=found).values_list("version", flat=True))
+    published = set(ReleaseVersion.objects.filter(product_id=product.id, version__in=found).values_list("version", flat=True))
     return [{"version": v, "branches": b} for v, b in found.items() if v in published]
 
 
-def link_branches(version: str, branches: list[dict], user) -> list[str]:
+def link_branches(product, version: str, branches: list[dict], user) -> list[str]:
     """After a drafted version is published: limit the Bitbucket, Commits & Pull Requests and Dashboard screens to its
     release branches (scope entries, as if an admin had added them). Returns "repository:branch" of those added."""
     added = []
     for entry in branches:
         slug, name = entry.get("repository"), entry.get("branch")
         branch = parse_branch(name or "")
-        if slug not in bitbucket_client.repositories() or not branch or not branch["release"]                 or branch["version"] != version:
+        if slug not in bitbucket_client.repositories(product) or not branch or not branch["release"]                 or branch["version"] != version:
             continue
         _, created = IntegrationScope.objects.get_or_create(kind=BRANCH, repository=slug, value=name,
                                                             defaults={"added_by": user})
@@ -125,9 +129,10 @@ def link_branches(version: str, branches: list[dict], user) -> list[str]:
     return added
 
 
-def unlink_version(version: str) -> list[str]:
-    """When a release is deleted, its release branches leave the scope again."""
-    rows = [r for r in IntegrationScope.objects.filter(kind=BRANCH)
+def unlink_version(product, version: str) -> list[str]:
+    """When a release is deleted, its release branches (in the product's repositories) leave the scope again."""
+    slugs = bitbucket_client.repositories(product)
+    rows = [r for r in IntegrationScope.objects.filter(kind=BRANCH, repository__in=slugs)
             if (b := parse_branch(r.value)) and b["release"] and b["version"] == version]
     for row in rows:
         row.delete()
@@ -136,11 +141,12 @@ def unlink_version(version: str) -> list[str]:
     return [f"{r.repository}:{r.value}" for r in rows]
 
 
-def versions() -> list[dict]:
-    """The versions that have a release/ branch, newest first, with what each one is compared against."""
+def versions(product) -> list[dict]:
+    """The versions that have a release/ branch in the product's repositories, newest first, with what each one is
+    compared against."""
     client = BitbucketClient()
     found: dict[tuple, dict] = {}
-    for slug in bitbucket_client.repositories():
+    for slug in bitbucket_client.repositories(product):
         by_version = _by_version(_release_branches(client, slug))
         for parts, branch in by_version.items():
             if not branch["release"]:
@@ -151,7 +157,7 @@ def versions() -> list[dict]:
             entry["repositories"].append({"repository": slug, "branch": branch["branch"],
                                           "previousBranch": previous["branch"] if previous else None,
                                           "previousVersion": previous["version"] if previous else None})
-    existing = set(ReleaseVersion.objects.values_list("version", flat=True))
+    existing = set(ReleaseVersion.objects.filter(product_id=product.id).values_list("version", flat=True))
     return [{**v, "date": v["date"].isoformat() if v["date"] else None, "published": v["version"] in existing}
             for _, v in sorted(found.items(), reverse=True)]
 
@@ -241,11 +247,11 @@ def _jira_issues(keys: list[str]) -> dict[str, dict]:
     return cache.cached("Jira", "release-issues", keys, fetch)
 
 
-def generate(version: str) -> dict:
-    """A draft release for `version`, in the upload preview's shape."""
-    entry = next((v for v in versions() if v["version"] == version), None)
+def generate(product, version: str) -> dict:
+    """A draft release of the product's `version`, in the upload preview's shape."""
+    entry = next((v for v in versions(product) if v["version"] == version), None)
     if entry is None:
-        raise BadQuery(f"No release/ branch for version {version} was found in the repositories.")
+        raise BadQuery(f"No release/ branch for version {version} was found in the repositories of {product.label}.")
     client = BitbucketClient()
     keys, warnings, commit_count = [], [], 0
     for repo in entry["repositories"]:

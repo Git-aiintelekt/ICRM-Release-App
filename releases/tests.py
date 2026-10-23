@@ -11,7 +11,7 @@ from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from config.mail import EmlFileBackend
-from integrations.tests.fakes import FakeUser
+from integrations.tests.fakes import FakeProduct, FakeUser
 
 from . import api
 from .services import release_email
@@ -20,7 +20,7 @@ ADMIN = FakeUser(admin=True)
 VIEWER = FakeUser(jira=True)
 
 RELEASE = {
-    "id": 5, "version": "11.1", "releaseDate": "2026-10-01", "description": "Faster <search> & exports",
+    "id": 5, "productId": 1, "productName": "iCRM", "version": "11.1", "releaseDate": "2026-10-01", "description": "Faster <search> & exports",
     "isLatest": True, "status": "RELEASED", "plannedLabel": None,
     "highlights": ["Search is 2x faster"], "knownIssues": ["Export of >10k rows is slow"], "upgradeNotes": [],
     "images": [],
@@ -119,6 +119,8 @@ class PublishExistingVersionTests(SimpleTestCase):
     def setUp(self):
         self.versions = mock.patch("releases.api.ReleaseVersion").start()
         self.audit = mock.patch("releases.api.record").start()
+        self.product = FakeProduct()
+        mock.patch("releases.api.products.from_request", return_value=self.product).start()
         self.addCleanup(mock.patch.stopall)
 
     def publish(self, body):
@@ -131,8 +133,8 @@ class PublishExistingVersionTests(SimpleTestCase):
         for mode in (None, "replace", "append"):  # an old client's mode changes nothing
             response = self.publish({**self.BODY, **({"mode": mode} if mode else {})})
             self.assertEqual(response.status_code, 409)
-            self.assertIn("Version 11.1 already exists", response.data["detail"])
-        self.versions.objects.filter.assert_called_with(version="11.1")
+            self.assertIn("iCRM version 11.1 already exists", response.data["detail"])
+        self.versions.objects.filter.assert_called_with(product=self.product, version="11.1")
         self.versions.objects.create.assert_not_called()
         self.audit.assert_not_called()
 
@@ -172,6 +174,7 @@ class SignedInReadTests(SimpleTestCase):
     def test_release_list_needs_a_signed_in_user(self):
         from releases import api
         mock.patch("releases.api.all_releases_json", return_value=[]).start()
+        mock.patch("releases.api.products.from_request", return_value=FakeProduct()).start()
         self.addCleanup(mock.patch.stopall)
         self.assertEqual(api.list_releases(self.factory.get("/api/releases")).status_code, 401)
         request = self.factory.get("/api/releases")
@@ -197,9 +200,11 @@ class PublicReadTests(SimpleTestCase):
     factory = APIRequestFactory()
 
     def setUp(self):
+        product = FakeProduct()
+        self.public_product = mock.patch("releases.api.products.from_public_request", return_value=product).start()
         mock.patch("releases.api.all_releases_json", return_value=[RELEASE]).start()
         mock.patch("releases.api.one_release_json",
-                   side_effect=lambda **lookup: RELEASE if lookup == {"version": "11.1"} else None).start()
+                   side_effect=lambda **lookup: RELEASE if lookup == {"version": "11.1", "product": product} else None).start()
         self.addCleanup(mock.patch.stopall)
 
     @override_settings(PUBLIC_RELEASE_NOTES=True)
@@ -241,8 +246,24 @@ class PublicReadTests(SimpleTestCase):
         request = self.factory.get("/api/public/release-images/1")
         request.user = AnonymousUser()
         with mock.patch("releases.api.ReleaseImage.objects.filter") as images, self.assertRaises(Http404):
+            images.return_value.exists.return_value = True
             images.return_value.first.return_value = None  # reaches the lookup: no 401
             api.public_release_image(request, 1)
+
+    @override_settings(PUBLIC_RELEASE_NOTES=True)
+    def test_a_screenshot_of_another_product_is_not_served(self):
+        from django.http import Http404
+        with mock.patch("releases.api.ReleaseImage.objects.filter") as images, self.assertRaises(Http404):
+            images.return_value.exists.return_value = False
+            api.public_release_image(self.factory.get("/api/public/release-images/1?key=abc"), 1)
+        images.assert_called_with(pk=1, release_version__product_id=1)
+
+    def test_public_json_hides_the_product_id_and_keeps_the_key_on_screenshots(self):
+        release = {**RELEASE, "images": [{"id": 7, "url": "/api/release-images/7", "caption": None}]}
+        from .services.release_json import public_release_json
+        public = public_release_json([release], "k3yK3yK3y")[0]
+        self.assertNotIn("productId", public)
+        self.assertEqual(public["images"][0]["url"], "/api/public/release-images/7?key=k3yK3yK3y")
 
     @override_settings(PUBLIC_RELEASE_NOTES=True)
     def test_signed_in_endpoints_still_need_sign_in(self):
@@ -322,3 +343,158 @@ class LatestVersionTests(SimpleTestCase):
         self.assertEqual(sorted(reversed(ordered), key=version_key), ordered)
         self.assertGreater(version_key("10.9.0"), version_key("10.8.5"))
         self.assertGreater(version_key("2.0"), version_key("1.99.99"))
+
+
+class ProductTests(SimpleTestCase):
+    """The product of a request, and products added and removed by admins (database mocked)."""
+
+    factory = APIRequestFactory()
+
+    def setUp(self):
+        self.audit = mock.patch("releases.api.record").start()
+        self.objects = mock.patch("releases.products.Product.objects").start()
+        self.addCleanup(mock.patch.stopall)
+
+    def test_the_header_or_query_picks_the_product_and_none_means_the_first(self):
+        from rest_framework.request import Request
+        from rest_framework.exceptions import ValidationError
+        from . import products
+        iuc = FakeProduct(2, "IUC")
+        lookup = self.objects.select_related.return_value.filter
+        lookup.return_value.first.return_value = iuc
+        self.assertIs(products.from_request(Request(self.factory.get("/api/x", HTTP_X_PRODUCT="2"))), iuc)
+        lookup.assert_called_with(pk="2")
+        self.assertIs(products.from_request(Request(self.factory.get("/api/x?product=2"))), iuc)
+        self.objects.filter.return_value.first.return_value = FakeProduct()
+        self.assertEqual(products.from_request(Request(self.factory.get("/api/x"))).name, "iCRM")
+        self.objects.filter.assert_called_with(parent__isnull=True)  # none picked: the first product, not a client
+        for bad in ("abc", "2; DROP"):
+            with self.assertRaises(ValidationError):
+                products.from_request(Request(self.factory.get("/api/x", HTTP_X_PRODUCT=bad)))
+        lookup.return_value.first.return_value = None  # removed meanwhile
+        with self.assertRaises(ValidationError):
+            products.from_request(Request(self.factory.get("/api/x", HTTP_X_PRODUCT="9")))
+
+    def call(self, view, user, method="post", data=None, **kwargs):
+        request = getattr(self.factory, method)("/api/x", data or {}, format="json")
+        force_authenticate(request, user=user)
+        return view(request, **kwargs)
+
+    def test_only_admins_add_and_remove(self):
+        self.assertEqual(self.call(api.add_product, VIEWER, data={"name": "New"}).status_code, 403)
+        self.assertEqual(self.call(api.remove_product, VIEWER, method="delete", product_id=2).status_code, 403)
+
+    def test_one_with_releases_or_clients_and_the_last_product_stay(self):
+        with mock.patch("releases.api.Product.objects") as objects:
+            product = mock.Mock(parent_id=None, releases=mock.Mock(count=mock.Mock(return_value=2)),
+                                clients=mock.Mock(count=mock.Mock(return_value=0)))
+            product.name = product.label = "IUC"
+            objects.select_related.return_value.filter.return_value.first.return_value = product
+            remove = lambda: self.call(api.remove_product, ADMIN, method="delete", product_id=2)  # noqa: E731
+            response = remove()
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("2 release version(s)", response.data["detail"])
+            product.releases.count.return_value = 0
+            product.clients.count.return_value = 3
+            self.assertIn("3 client(s)", remove().data["detail"])
+            product.clients.count.return_value = 0
+            objects.filter.return_value.count.return_value = 1
+            self.assertEqual(remove().status_code, 400)
+            product.delete.assert_not_called()
+            objects.filter.return_value.count.return_value = 3
+            self.assertEqual(remove().status_code, 204)
+            product.delete.assert_called_once()
+            self.assertEqual(self.audit.call_args.kwargs["target"], "IUC")
+
+    def test_a_client_can_be_the_last_of_its_product(self):
+        with mock.patch("releases.api.Product.objects") as objects:
+            client = mock.Mock(parent_id=1, releases=mock.Mock(count=mock.Mock(return_value=0)),
+                               clients=mock.Mock(count=mock.Mock(return_value=0)), label="IUC – Client A")
+            objects.select_related.return_value.filter.return_value.first.return_value = client
+            objects.filter.return_value.count.return_value = 1  # only one product: doesn't matter for a client
+            self.assertEqual(self.call(api.remove_product, ADMIN, method="delete", product_id=5).status_code, 204)
+
+    def test_names_are_trimmed_and_unique_within_their_product(self):
+        with mock.patch("releases.api.Product.objects") as objects:
+            objects.filter.return_value.exists.return_value = True
+            response = self.call(api.add_product, ADMIN, data={"name": "  icrm "})
+            self.assertEqual(response.status_code, 400)
+            objects.filter.assert_called_with(parent=None, name__iexact="icrm")
+            objects.filter.return_value.exists.return_value = False
+            objects.aggregate.return_value = {"m": 3}
+            objects.create.return_value = FakeProduct(4, "Sales   Audit 2")
+            self.assertEqual(self.call(api.add_product, ADMIN, data={"name": "Sales   Audit 2"}).status_code, 201)
+            objects.create.assert_called_with(name="Sales Audit 2", parent=None, display_order=4)
+
+    def test_a_client_is_added_to_a_product_never_to_a_client(self):
+        with mock.patch("releases.api.Product.objects") as objects:
+            iuc = FakeProduct(2, "IUC")
+            objects.filter.return_value.first.return_value = iuc
+            objects.filter.return_value.exists.return_value = False
+            objects.aggregate.return_value = {"m": 3}
+            created = FakeProduct(7, "Client A")
+            created.label = "IUC – Client A"
+            objects.create.return_value = created
+            response = self.call(api.add_product, ADMIN, data={"name": "Client A", "parentId": 2})
+            self.assertEqual(response.status_code, 201, response.data)
+            objects.filter.assert_any_call(pk=2, parent__isnull=True)
+            objects.create.assert_called_with(name="Client A", parent=iuc, display_order=4)
+            self.assertEqual(self.audit.call_args.kwargs["target"], "IUC – Client A")
+            objects.filter.return_value.first.return_value = None  # 7 is a client, not a product
+            self.assertEqual(self.call(api.add_product, ADMIN, data={"name": "Sub", "parentId": 7}).status_code, 400)
+
+    def test_release_files_and_emails_carry_the_product_name(self):
+        mock.patch("integrations.credentials.stored", return_value={}).start()
+        iuc = {**RELEASE, "productName": "IUC"}
+        self.assertEqual(release_email.file_name(iuc), "IUC-release-notes-11.1.html")
+        self.assertIn("<h1>IUC Release 11.1</h1>", release_email.notes_html(iuc))
+
+
+class PublicKeyTests(SimpleTestCase):
+    """The public page names its product by a key that can't be guessed, never by its id."""
+
+    factory = APIRequestFactory()
+
+    def setUp(self):
+        self.objects = mock.patch("releases.products.Product.objects").start()
+        self.addCleanup(mock.patch.stopall)
+
+    def pick(self, url):
+        from rest_framework.request import Request
+        from . import products
+        return products.from_public_request(Request(self.factory.get(url)))
+
+    def test_the_key_picks_the_product_and_no_key_the_first(self):
+        client = FakeProduct(4, "Client A")
+        self.objects.select_related.return_value.filter.return_value.first.return_value = client
+        self.assertIs(self.pick("/api/public/releases?key=Ab3_-xYz9QwErTy1"), client)
+        self.objects.select_related.return_value.filter.assert_called_with(public_key="Ab3_-xYz9QwErTy1")
+        self.objects.filter.return_value.first.return_value = FakeProduct()
+        self.assertEqual(self.pick("/api/public/releases").name, "iCRM")
+
+    def test_ids_headers_and_unknown_keys_are_404(self):
+        from rest_framework.exceptions import NotFound
+        self.objects.select_related.return_value.filter.return_value.first.return_value = None
+        self.objects.filter.return_value.first.return_value = FakeProduct()
+        for url in ("/api/public/releases?key=Ab3_-xYz9QwErTy1", "/api/public/releases?key=2",
+                    "/api/public/releases?key=%27%3B--"):
+            with self.assertRaises(NotFound):
+                self.pick(url)
+        # An id in the header or ?product= is ignored: the first product, not product 2.
+        from rest_framework.request import Request
+        from . import products
+        request = Request(self.factory.get("/api/public/releases?product=2", HTTP_X_PRODUCT="2"))
+        self.assertEqual(products.from_public_request(request).name, "iCRM")
+
+    def test_only_admins_see_the_keys(self):
+        from . import products
+        product = FakeProduct()
+        product.public_key = "Ab3_-xYz9QwErTy1"
+        self.assertNotIn("publicKey", products.product_json(product))
+        self.assertEqual(products.product_json(product, admin=True)["publicKey"], "Ab3_-xYz9QwErTy1")
+
+    def test_product_list_needs_sign_in_and_new_link_needs_admin(self):
+        self.assertEqual(api.list_products(self.factory.get("/api/products")).status_code, 401)
+        request = self.factory.post("/api/admin/products/2/public-key")
+        force_authenticate(request, user=VIEWER)
+        self.assertEqual(api.new_public_key(request, product_id=2).status_code, 403)

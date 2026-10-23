@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useApi } from '../lib/integrationData';
+import { formatDateTime, formatNumber, useApi } from '../lib/integrationData';
+import { HeroStats, serviceHealth } from '../components/IntegrationUI';
 import JiraIssueDetails from '../components/JiraIssueDetails';
 import JiraIssueList from '../components/JiraIssueList';
 import LiveJiraTickets from '../components/LiveJiraTickets';
@@ -60,6 +61,15 @@ function ImportedJiraIssues() {
 
 // The imported list is hidden; set to true to bring its tab back.
 const SHOW_IMPORTED = false;
+// Beside the title: the Jira projects shown here and whether Jira answers.
+function jiraStats(jira) {
+  const keys = jira.projectKeys ?? [];
+  return [
+    { label: 'Projects', value: formatNumber(keys.length), sub: keys.join(', ') || 'none added' },
+    { label: 'Jira', value: serviceHealth(jira).state, text: true, sub: `Synced ${formatDateTime(jira.lastSuccessAt)}`, wide: true },
+  ];
+}
+
 const TABS = [
   { id: 'live', label: 'Live tickets' },
   ...(SHOW_IMPORTED ? [{ id: 'imported', label: 'Imported release data' }] : []),
@@ -84,19 +94,22 @@ function JiraPage({ search = '' }) {
 
   return (
     <div className="page">
-      <section className="page-hero">
-        <p className="eyebrow">Engineering</p>
-        <h1>Jira tickets</h1>
-        <p className="page-lede">
-          Live tickets from Jira (projects {status.data?.jira.projectKeys?.join(', ') || '…'})
-          {SHOW_IMPORTED ? ', and the imported Jira list with its seed and table data.' : '.'}
-          {user?.isAdmin && (
-            <>
-              {' '}
-              <Link to="/settings#integrations">Add or remove Jira projects</Link>
-            </>
-          )}
-        </p>
+      <section className="page-hero page-hero-split">
+        <div className="hero-text">
+          <p className="eyebrow">Engineering</p>
+          <h1>Jira tickets</h1>
+          <p className="page-lede">
+            Live tickets from Jira (projects {status.data?.jira.projectKeys?.join(', ') || '…'})
+            {SHOW_IMPORTED ? ', and the imported Jira list with its seed and table data.' : '.'}
+            {user?.isAdmin && (
+              <>
+                {' '}
+                <Link to="/settings#integrations">Add or remove Jira projects</Link>
+              </>
+            )}
+          </p>
+        </div>
+        {status.data && <HeroStats items={jiraStats(status.data.jira)} />}
       </section>
 
       {TABS.length > 1 && (

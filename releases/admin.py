@@ -8,7 +8,7 @@ from django.utils.html import format_html
 from audit import models as audit
 from audit.service import record
 
-from .models import ReleaseImage, ReleaseItem, ReleaseUpload, ReleaseVersion
+from .models import Product, ProductRepository, ReleaseImage, ReleaseItem, ReleaseUpload, ReleaseVersion
 from .services import image_store
 from .services.latest import refresh_latest
 
@@ -92,8 +92,8 @@ class ItemInline(admin.TabularInline):
 
 @admin.register(ReleaseVersion)
 class ReleaseVersionAdmin(admin.ModelAdmin):
-    list_display = ["version", "release_date", "status", "latest", "planned_label", "change_count", "edited_at"]
-    list_filter = ["status", "latest"]
+    list_display = ["version", "product", "release_date", "status", "latest", "planned_label", "change_count", "edited_at"]
+    list_filter = ["product", "status", "latest"]
     search_fields = ["version", "description"]
     date_hierarchy = "release_date"
     ordering = ["-release_date"]
@@ -101,7 +101,7 @@ class ReleaseVersionAdmin(admin.ModelAdmin):
     readonly_fields = ["latest", "edited_at", "created_at", "updated_at"]
     inlines = [ItemInline, GalleryInline]
     fieldsets = [
-        (None, {"fields": ["version", "release_date", "status", "planned_label", "latest"]}),
+        (None, {"fields": ["product", "version", "release_date", "status", "planned_label", "latest"]}),
         ("Notes", {"fields": ["description", "highlights", "known_issues", "upgrade_notes"]}),
         ("History", {"classes": ["collapse"], "fields": ["edited_at", "created_at", "updated_at"]}),
     ]
@@ -247,3 +247,14 @@ class ReleaseUploadAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+class ProductRepositoryInline(admin.TabularInline):
+    model = ProductRepository
+    extra = 0
+
+
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ["name", "display_order"]
+    inlines = [ProductRepositoryInline]

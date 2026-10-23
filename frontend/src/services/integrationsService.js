@@ -16,7 +16,9 @@ function query(params) {
   return text ? `?${text}` : '';
 }
 
-export const getIntegrationStatus = () => apiFetch(`${BASE}/status`);
+// productId: the status as that product sees it (its repositories); otherwise the header's product.
+export const getIntegrationStatus = (productId) =>
+  apiFetch(`${BASE}/status`, productId ? { headers: { 'X-Product': String(productId) } } : undefined);
 export const refreshIntegrations = () => apiFetch(`${BASE}/refresh`, { method: 'POST' });
 // Admins: limit every screen to chosen branches (kind BRANCH + repository) or Jira fix versions (kind FIX_VERSION).
 export const addScope = ({ kind, repository, value }) =>

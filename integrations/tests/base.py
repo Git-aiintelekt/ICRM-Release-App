@@ -4,7 +4,9 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from .fakes import TEST_SETTINGS
+from integrations import bitbucket_client
+
+from .fakes import TEST_SETTINGS, FakeProduct
 
 
 @override_settings(**TEST_SETTINGS)
@@ -30,6 +32,13 @@ class IntegrationTestCase(SimpleTestCase):
         mock.patch("integrations.credentials.stored", side_effect=lambda: self.saved_credentials).start()
         self.repository_changes = ([], [])  # (added, removed .env repositories)
         mock.patch("integrations.scope.repository_changes", side_effect=lambda: self.repository_changes).start()
+        # The product of every request (the header's picker), and its repositories: None = every repository.
+        self.product = FakeProduct()
+        mock.patch("releases.products.from_request", side_effect=lambda request: self.product).start()
+        self.product_repositories = None
+        mock.patch("releases.products.repository_slugs",
+                   side_effect=lambda product: self.product_repositories if self.product_repositories is not None
+                   else bitbucket_client.repositories()).start()
         self.addCleanup(mock.patch.stopall)
 
     def serve(self, http):

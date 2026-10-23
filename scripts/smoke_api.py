@@ -14,6 +14,7 @@ from django.test import Client, override_settings
 from accounts.models import AppUser
 from accounts.tokens import create_reset_token, create_token
 from releases.models import ReleaseVersion
+from releases.services.latest import version_key
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
@@ -77,6 +78,7 @@ try:
         check("login with new password", anon.post("/api/auth/login", {"email": "smoke.test@example.com", "password": "smoke-pass-2"}, content_type=J), 200)
         check("session token rejected as reset token", anon.post("/api/auth/reset-password", {"token": create_token(smoke.id), "password": "smoke-pass-4"}, content_type=J), 400)
 
+        anon.cookies.clear()  # the sign-ins above left a session cookie: from here on anon is signed out again
         # ---- permissions ----
         check("admin endpoint, signed out -> 401", anon.get("/api/admin/users"), 401)
         check("admin endpoint, non-admin -> 403", plain.get("/api/admin/users"), 403)
@@ -107,7 +109,7 @@ try:
         png_url = "data:image/png;base64," + base64.b64encode(PNG).decode()
         release = check("publish new version", admin.post("/api/admin/releases", {
             "fileName": "smoke.docx", "version": "0.0-smoke", "releaseDate": "2026-09-30", "status": "UPCOMING",
-            "plannedLabel": "Someday", "summary": "Smoke test", "highlights": ["One"], "markLatest": False,
+            "plannedLabel": "Someday", "summary": "Smoke test", "highlights": ["One"],
             "images": [{"dataUrl": png_url, "caption": "Gallery shot"}],
             "items": [{"category": "NEW_FEATURE", "title": "Feature A", "jiraId": "CS-1", "images": [{"dataUrl": png_url}]},
                       {"category": "BUG_FIX", "title": "Fix B", "description": "detail"}],
@@ -117,10 +119,21 @@ try:
         rid = release["id"]
         check("read by version, signed in", plain.get("/api/releases/version/0.0-smoke"), 200)
         check("read while signed out -> 401", anon.get("/api/releases"), 401)
-        check("screenshot, signed in", plain.get(release["images"][0]["url"]), 200)
+        shot = plain.get(release["images"][0]["url"])
+        check("screenshot, signed in", shot, 200)
+        b"".join(shot.streaming_content)  # reading it to the end closes the file, so the clean-up below can delete it
         check("screenshot while signed out -> 401", anon.get(release["images"][0]["url"]), 401)
+        # The public page: signed out, only while PUBLIC_RELEASE_NOTES=true, and without Jira numbers.
+        with override_settings(PUBLIC_RELEASE_NOTES=False):
+            check("public read while switched off -> 404", anon.get("/api/public/releases"), 404)
+        with override_settings(PUBLIC_RELEASE_NOTES=True):
+            public = check("public read by version, signed out", anon.get("/api/public/releases/version/0.0-smoke"), 200)
+            assert all("jiraId" not in item for item in public["items"])
+            shot = anon.get(public["images"][0]["url"])
+            check("public screenshot, signed out", shot, 200)
+            b"".join(shot.streaming_content)
         # An upload only adds new versions; changes to an existing one are made on the Release Notes page.
-        check("upload to an existing version -> 409", admin.post("/api/admin/releases", {"fileName": "smoke2.docx", "version": "0.0-smoke", "releaseDate": "2026-09-30", "mode": "append", "markLatest": False, "items": [{"category": "BUG_FIX", "title": "Fix C"}]}, content_type=J), 409)
+        check("upload to an existing version -> 409", admin.post("/api/admin/releases", {"fileName": "smoke2.docx", "version": "0.0-smoke", "releaseDate": "2026-09-30", "mode": "append", "items": [{"category": "BUG_FIX", "title": "Fix C"}]}, content_type=J), 409)
 
         # ---- edit ----
         body = check("edit release details", admin.patch(f"/api/admin/releases/{rid}", {"summary": "Edited", "status": "RELEASED", "knownIssues": ["K1", " "]}, content_type=J), 200)
@@ -132,12 +145,22 @@ try:
         from django.core.files.uploadedfile import SimpleUploadedFile
         body = check("add screenshot to item", admin.post(f"/api/admin/releases/{rid}/images", {"file": SimpleUploadedFile("s.png", PNG), "caption": "Item shot", "itemId": str(item_id)}), 201)
         image_id = next(i for i in body["items"] if i["id"] == item_id)["images"][0]["id"]
-        check("reject non-image upload -> 400", admin.post(f"/api/admin/releases/{rid}/images", {"file": SimpleUploadedFile("s.png", b"not an image")}), 400)
+        mp4 = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 100
+        body = check("add video to gallery", admin.post(f"/api/admin/releases/{rid}/images", {"file": SimpleUploadedFile("v.mp4", mp4)}), 201)
+        video = next(i for i in body["images"] if i["contentType"] == "video/mp4")
+        clip = admin.get(video["url"], HTTP_RANGE="bytes=0-7")
+        check("video byte range -> 206", clip, 206)
+        assert b"".join(clip.streaming_content) == mp4[:8]  # read to the end, which also closes the file
+        check("delete video", admin.delete(f"/api/admin/release-images/{video['id']}"), 200)
+        check("reject non-image upload -> 400",admin.post(f"/api/admin/releases/{rid}/images", {"file": SimpleUploadedFile("s.png", b"not an image")}), 400)
         check("edit caption", admin.patch(f"/api/admin/release-images/{image_id}", {"caption": "New caption"}, content_type=J), 200)
         check("delete screenshot", admin.delete(f"/api/admin/release-images/{image_id}"), 200)
         check("delete item", admin.delete(f"/api/admin/release-items/{item_id}"), 200)
-        check("mark latest", admin.patch(f"/api/admin/releases/{rid}", {"markLatest": True}, content_type=J), 200)
-        assert ReleaseVersion.objects.filter(latest=True).count() == 1
+        # Latest is always the highest released version number, whatever was uploaded or edited last.
+        check("release it", admin.patch(f"/api/admin/releases/{rid}", {"status": "RELEASED"}, content_type=J), 200)
+        released = ReleaseVersion.objects.exclude(status="UPCOMING")
+        highest = max(released, key=lambda r: (version_key(r.version), r.release_date))
+        assert list(ReleaseVersion.objects.filter(latest=True)) == [highest], "Latest is not the highest version"
         check("delete release", admin.delete(f"/api/admin/releases/{rid}"), 204)
         check("deleted release -> 404", plain.get(f"/api/releases/{rid}"), 404)
         check("non-admin edit -> 403", plain.patch(f"/api/admin/releases/{rid}", {"summary": "x"}, content_type=J), 403)

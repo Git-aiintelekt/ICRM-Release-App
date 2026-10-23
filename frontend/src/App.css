@@ -459,6 +459,12 @@ textarea.input {
   margin-top: 24px;
 }
 
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .status-text {
   padding: 24px 0;
   color: var(--text-muted);
@@ -849,6 +855,17 @@ textarea.input {
   /* Show the whole screenshot; letterbox rather than crop. */
   object-fit: contain;
   background: var(--bg-subtle);
+}
+
+/* A short screen recording, framed like a screenshot. */
+.screenshot-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: contain;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
 .screenshot figcaption {
@@ -1379,6 +1396,16 @@ textarea.input {
 }
 
 .image-edit img {
+  display: block;
+  width: 100%;
+  height: 100px;
+  object-fit: contain;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.image-edit-video {
   display: block;
   width: 100%;
   height: 100px;
@@ -2675,4 +2702,407 @@ a.stat-card:hover {
 .jira-chip-plain:hover {
   color: var(--text);
   background: var(--code-bg);
+}
+
+/* ---------- Background: a soft colour glow and a faint dot grid behind every page ---------- */
+/* Mixed from the theme's own colours, so it follows light, dark and a custom background colour.
+   Remove this section to go back to the plain background. */
+
+body {
+  position: relative;
+  isolation: isolate;
+  /* How strong the glow is: dark backgrounds need more colour to show it. */
+  --glow: 22%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) body {
+    --glow: 34%;
+  }
+}
+
+:root[data-theme='dark'] body {
+  --glow: 34%;
+}
+
+/* The glow: two large, blurred colour washes in the top corners, drifting very slowly. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -20vh 0 auto;
+  height: 90vh;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(40% 55% at 12% 20%, color-mix(in srgb, var(--accent) var(--glow), transparent), transparent 70%),
+    radial-gradient(38% 50% at 88% 8%, color-mix(in srgb, var(--accent-2) var(--glow), transparent), transparent 70%),
+    radial-gradient(30% 40% at 55% 45%, color-mix(in srgb, var(--new-fg) calc(var(--glow) / 2), transparent), transparent 70%);
+  filter: blur(40px);
+  animation: backdrop-drift 40s ease-in-out infinite alternate;
+}
+
+/* The dot grid, fading out towards the bottom of the screen. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--text-h) 13%, transparent) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.35) 45%, transparent 80%);
+}
+
+@keyframes backdrop-drift {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(3vw, 4vh, 0) scale(1.08);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
+}
+
+/* Let the background show through the side navigation, as it does through the header. */
+.app-sidebar {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: saturate(160%) blur(12px);
+}
+
+/* Page titles: the two theme colours run through the heading; the label above it becomes a pill. */
+.page-hero h1 {
+  width: fit-content;
+  background: linear-gradient(100deg, var(--text-h) 30%, var(--accent) 75%, var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.eyebrow {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Cards: slightly see-through with a gentle lift on hover. */
+.stat-card,
+.auth-card {
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.stat-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+a.stat-card:hover {
+  transform: translateY(-2px);
+}
+
+/* Sign-in: a brighter glow right behind the card. */
+.auth-page {
+  position: relative;
+}
+
+/* A thin two-colour bar along the top of the card (border-image would square off the rounded corners). */
+.auth-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.auth-page::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(560px, 90vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  z-index: -1;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 18%, transparent), transparent);
+}
+
+/* Primary buttons: the same two-colour gradient. */
+.button-primary {
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--accent-2)));
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.button-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--accent-hover), color-mix(in srgb, var(--accent-hover) 55%, var(--accent-2)));
+}
+
+/* Printing: no background effects. */
+@media print {
+  body::before,
+  body::after,
+  .auth-page::before {
+    display: none;
+  }
+}
+
+/* ---------- Wide screens: use the width instead of leaving empty margins ---------- */
+
+.site-header-inner,
+.site-main {
+  max-width: 1600px;
+}
+
+/* Page title on the left, summary tiles on the right (Release Notes). */
+.page-hero-split {
+  max-width: none;
+  display: grid;
+  grid-template-columns: minmax(0, 720px) auto;
+  justify-content: space-between;
+  align-items: end;
+  gap: 32px;
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, auto);
+  gap: 12px;
+  margin: 0;
+}
+
+.hero-stat {
+  position: relative;
+  min-width: 130px;
+  padding: 14px 20px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.hero-stat::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.hero-stat dt {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hero-stat dd {
+  margin: 4px 0 0;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text-h);
+}
+
+.hero-stat dd a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.hero-stat dd a:hover {
+  color: var(--accent);
+}
+
+.hero-stat-sub {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* Each version is a card. */
+.release-entry,
+.release-entry:last-child {
+  margin-top: 28px;
+  padding: 36px 40px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--shadow);
+}
+
+/* "At a glance": a third column on wide screens. */
+.releases-rail {
+  display: none;
+}
+
+@media (min-width: 1280px) {
+  .releases-layout {
+    grid-template-columns: 200px minmax(0, 1fr) 260px;
+    gap: 40px;
+  }
+
+  .releases-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: sticky;
+    top: calc(var(--header-h) + 24px);
+  }
+}
+
+.rail-card {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+
+.rail-version {
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-h);
+}
+
+.rail-date {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.rail-total {
+  margin-top: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+
+.rail-total strong {
+  font-size: 26px;
+  color: var(--text-h);
+  margin-right: 4px;
+}
+
+.rail-bars {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rail-bar {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.rail-bar:hover,
+.rail-bar-active {
+  background: var(--accent-bg);
+}
+
+.rail-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rail-bar-count {
+  color: var(--text-muted);
+}
+
+.rail-bar-track {
+  display: block;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.rail-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.rail-tone-new {
+  background: var(--new-fg);
+}
+
+.rail-tone-improved {
+  background: var(--improved-fg);
+}
+
+.rail-tone-fixed {
+  background: var(--fixed-fg);
+}
+
+.rail-tone-security {
+  background: var(--security-fg);
+}
+
+.rail-top {
+  align-self: flex-start;
+  font-size: 13px;
+}
+
+@media (max-width: 1100px) {
+  .page-hero-split {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .hero-stats {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-self: stretch;
+  }
+
+  .hero-stat {
+    min-width: 0;
+  }
+
+  .hero-stat-wide {
+    grid-column: 1 / -1;
+  }
+
+  .release-entry,
+  .release-entry:last-child {
+    padding: 24px 18px;
+    border-radius: 14px;
+  }
 }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { CATEGORIES, CATEGORY_ORDER, JIRA_BROWSE_URL, formatReleaseDate, versionAnchor } from '../lib/releaseFormat';
 import { deleteItem } from '../services/adminReleaseEditService';
 import { CsvImportButton, DeleteReleaseButton, ItemEditor, ReleaseDetailsEditor, ReleaseEmailPanel, ScreenshotManager } from './ReleaseEditors';
+import ScreenshotMedia from './ScreenshotMedia';
 
 const COLLAPSED_COUNT = 8;
 
@@ -13,9 +14,7 @@ function Screenshots({ images, className = 'screenshot-grid' }) {
     <div className={className}>
       {images.map((image) => (
         <figure key={image.id} className="screenshot">
-          <a href={image.url} target="_blank" rel="noreferrer" title="Open full size">
-            <img src={image.url} alt={image.caption ?? 'Screenshot'} loading="lazy" />
-          </a>
+          <ScreenshotMedia image={image} className="screenshot-video" lazy />
           {image.caption && <figcaption>{image.caption}</figcaption>}
         </figure>
       ))}

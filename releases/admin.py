@@ -10,6 +10,7 @@ from audit.service import record
 
 from .models import ReleaseImage, ReleaseItem, ReleaseUpload, ReleaseVersion
 from .services import image_store
+from .services.latest import refresh_latest
 
 
 def _mark_edited(request, release: ReleaseVersion, details: str) -> None:
@@ -31,7 +32,8 @@ class ScreenshotForm(forms.ModelForm):
             content = upload.read(image_store.MAX_IMAGE_BYTES + 1)
             if len(content) > image_store.MAX_IMAGE_BYTES:
                 raise forms.ValidationError("The screenshot is larger than 5 MB.")
-            if image_store.sniff(content) is None:
+            content_type = image_store.sniff(content)
+            if content_type is None or image_store.is_video(content_type):  # videos: Release Notes page only
                 raise forms.ValidationError("Screenshots must be PNG, JPEG, GIF or WebP.")
             data["upload_bytes"] = content
         elif not self.instance.pk and self.has_changed():
@@ -95,7 +97,8 @@ class ReleaseVersionAdmin(admin.ModelAdmin):
     search_fields = ["version", "description"]
     date_hierarchy = "release_date"
     ordering = ["-release_date"]
-    readonly_fields = ["edited_at", "created_at", "updated_at"]
+    # Latest is always the highest released version number (releases/services/latest.py).
+    readonly_fields = ["latest", "edited_at", "created_at", "updated_at"]
     inlines = [ItemInline, GalleryInline]
     fieldsets = [
         (None, {"fields": ["version", "release_date", "status", "planned_label", "latest"]}),
@@ -114,8 +117,16 @@ class ReleaseVersionAdmin(admin.ModelAdmin):
         if obj.status != "UPCOMING":
             obj.planned_label = None
         super().save_model(request, obj, form, change)
-        if obj.latest:
-            ReleaseVersion.objects.exclude(pk=obj.pk).update(latest=False)
+        refresh_latest()
+        obj.refresh_from_db(fields=["latest"])
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        refresh_latest()
+
+    def delete_queryset(self, request, queryset):
+        super().delete_queryset(request, queryset)
+        refresh_latest()
 
     def save_related(self, request, form, formsets, change):
         # Items added here go to the end of their category.

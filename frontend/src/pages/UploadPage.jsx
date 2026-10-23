@@ -23,7 +23,6 @@ const toDraft = (parsed) => ({
   knownIssuesText: parsed.knownIssues.join('\n'),
   upgradeNotesText: parsed.upgradeNotes.join('\n'),
   parsedVersion: parsed.version ?? '',
-  markLatest: parsed.status !== 'UPCOMING',
   items: parsed.items.map((item, index) => ({ ...item, key: index })),
 });
 
@@ -325,7 +324,6 @@ function UploadPage() {
         knownIssues: toLines(draft.knownIssuesText),
         upgradeNotes: toLines(draft.upgradeNotesText),
         images: draft.images,
-        markLatest: draft.markLatest,
         items: draft.items.map(({ category, title, description, jiraId, images }) => ({
           category,
           title: title.trim(),
@@ -459,9 +457,7 @@ function UploadPage() {
                 <select
                   className="input"
                   value={draft.status}
-                  onChange={(event) =>
-                    updateDraft({ status: event.target.value, markLatest: event.target.value !== 'UPCOMING' })
-                  }
+                  onChange={(event) => updateDraft({ status: event.target.value })}
                 >
                   <option value="RELEASED">Released</option>
                   <option value="UPCOMING">Coming soon</option>
@@ -509,15 +505,7 @@ function UploadPage() {
               </p>
             )}
 
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={draft.markLatest}
-                onChange={(event) => updateDraft({ markLatest: event.target.checked })}
-              />
-              Mark as the latest release
-              {draft.status === 'UPCOMING' && <span className="field-hint"> (usually off until it ships)</span>}
-            </label>
+            <p className="field-hint">The released version with the highest number is marked Latest automatically.</p>
           </fieldset>
 
           <fieldset className="review-block">

@@ -5,8 +5,28 @@ import ThemeMenu from './ThemeMenu';
 const LOGO_URL = `${import.meta.env.BASE_URL}favicon.ico`;
 
 // The page links live in the left sidebar (AppSidebar); on narrow screens the menu button opens it.
-function SiteHeader({ pathname, menuOpen, onToggleMenu }) {
+// The public release notes page shows only the brand and the theme menu: no navigation, no sign-in.
+function SiteHeader({ pathname, publicPage, menuOpen, onToggleMenu }) {
   const { user, checking, logout, logoutEverywhere } = useAuth();
+
+  if (publicPage) {
+    return (
+      <header className="site-header">
+        <div className="site-header-inner site-header-app">
+          <a href={pathname} className="brand">
+            <img src={LOGO_URL} alt="" className="brand-logo" width="32" height="32" />
+            <span>
+              Release <span className="brand-sub">Manager</span>
+            </span>
+          </a>
+          <div className="site-header-spacer" />
+          <div className="site-account">
+            <ThemeMenu />
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   return (
     <header className="site-header">

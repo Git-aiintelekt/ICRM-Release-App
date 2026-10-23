@@ -172,10 +172,11 @@ class RegistrationRuleTests(AuthApiTestCase):
         self.assertIn("@aiintelekt.com", response.data["detail"])
         self.assertEqual(self.register("someone@evil-aiintelekt.com").status_code, 400)
 
-    @override_settings(ALLOW_REGISTRATION=True, REGISTRATION_EMAIL_DOMAINS=["aiintelekt.com"])
+    @override_settings(ALLOW_REGISTRATION=True, REGISTRATION_EMAIL_DOMAINS=["aiintelekt.com"], PUBLIC_RELEASE_NOTES=False)
     def test_options_tell_the_sign_in_page(self):
         response = api.auth_options(self.factory.get("/api/auth/options"))
-        self.assertEqual(response.data, {"registrationOpen": True, "registrationDomains": ["aiintelekt.com"]})
+        self.assertEqual(response.data, {"registrationOpen": True, "registrationDomains": ["aiintelekt.com"],
+                                         "publicReleaseNotes": False})
 
 
 class LogoutTests(AuthApiTestCase):

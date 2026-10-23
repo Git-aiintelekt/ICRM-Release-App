@@ -88,9 +88,11 @@ def _registration_domains_text() -> str:
 
 @api_view(["GET"])
 def auth_options(request):
-    """What the sign-in page offers: whether self sign-up is open, and for which email domains."""
+    """What the sign-in page offers: whether self sign-up is open, and for which email domains; and whether the
+    public release notes page is switched on (the Release Notes page then offers its link)."""
     return Response({"registrationOpen": settings.ALLOW_REGISTRATION,
-                     "registrationDomains": settings.REGISTRATION_EMAIL_DOMAINS})
+                     "registrationDomains": settings.REGISTRATION_EMAIL_DOMAINS,
+                     "publicReleaseNotes": settings.PUBLIC_RELEASE_NOTES})
 
 
 @api_view(["POST"])

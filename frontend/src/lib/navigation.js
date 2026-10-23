@@ -2,6 +2,9 @@
 const canViewJira = (user) => Boolean(user?.canViewJira);
 const isAdmin = (user) => Boolean(user?.isAdmin);
 
+// The public release notes: read-only, the same for everyone, signed in or not (README: "Public release notes").
+export const PUBLIC_RELEASE_NOTES_PATH = '/public/release-notes';
+
 export const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: 'dashboard', show: canViewJira },
   { to: '/', label: 'Release Notes', icon: 'releases', show: () => true },

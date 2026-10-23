@@ -102,7 +102,7 @@ class IsAdmin(permissions.BasePermission):
         return request.user.is_admin
 
 
-# ---- Rate limits on the sign-in endpoints, per client IP (rates: REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]) ----
+# ---- Rate limits on the sign-in and public endpoints, per client IP (rates: REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]) ----
 
 class _ClientIPThrottle(SimpleRateThrottle):
     """Counts requests per client IP; NUM_PROXIES decides whether X-Forwarded-For is trusted."""
@@ -121,3 +121,7 @@ class RegisterThrottle(_ClientIPThrottle):
 
 class PasswordResetThrottle(_ClientIPThrottle):
     scope = "password_reset"
+
+
+class PublicReadThrottle(_ClientIPThrottle):
+    scope = "public_read"

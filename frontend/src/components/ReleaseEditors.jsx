@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { CATEGORIES, CATEGORY_ORDER } from '../lib/releaseFormat';
 import * as edit from '../services/adminReleaseEditService';
+import ScreenshotMedia from './ScreenshotMedia';
 
 const toLines = (text) =>
   text
@@ -40,7 +41,6 @@ export function ReleaseDetailsEditor({ release, onSaved, onDeleted, onClose }) {
     highlights: release.highlights.join('\n'),
     knownIssues: release.knownIssues.join('\n'),
     upgradeNotes: release.upgradeNotes.join('\n'),
-    markLatest: release.isLatest,
   });
   const { busy, error, run } = useSaver(onSaved);
   const set = (key) => (event) =>
@@ -57,7 +57,6 @@ export function ReleaseDetailsEditor({ release, onSaved, onDeleted, onClose }) {
         highlights: toLines(form.highlights),
         knownIssues: toLines(form.knownIssues),
         upgradeNotes: toLines(form.upgradeNotes),
-        markLatest: form.markLatest,
       })
     );
     if (ok) {
@@ -117,10 +116,6 @@ export function ReleaseDetailsEditor({ release, onSaved, onDeleted, onClose }) {
           <textarea className="input" rows={4} value={form.upgradeNotes} onChange={set('upgradeNotes')} />
         </label>
       </div>
-      <label className="checkbox">
-        <input type="checkbox" checked={form.markLatest} onChange={set('markLatest')} />
-        Latest release
-      </label>
       {error && (
         <p className="form-error" role="alert">
           {error}
@@ -164,9 +159,7 @@ export function ScreenshotManager({ releaseId, itemId, images, onSaved, label })
             const dirty = caption !== (image.caption ?? '');
             return (
               <figure key={image.id} className="image-edit">
-                <a href={image.url} target="_blank" rel="noreferrer">
-                  <img src={image.url} alt={image.caption ?? 'Screenshot'} />
-                </a>
+                <ScreenshotMedia image={image} className="image-edit-video" />
                 <input
                   className="input input-subtle"
                   value={caption}
@@ -203,7 +196,7 @@ export function ScreenshotManager({ releaseId, itemId, images, onSaved, label })
         <input
           className="input input-subtle"
           value={newCaption}
-          placeholder="Caption for a new screenshot (optional)"
+          placeholder="Caption for a new screenshot or video (optional)"
           aria-label="Caption for new screenshot"
           maxLength={255}
           onChange={(event) => setNewCaption(event.target.value)}
@@ -214,7 +207,7 @@ export function ScreenshotManager({ releaseId, itemId, images, onSaved, label })
         <input
           ref={fileRef}
           type="file"
-          accept="image/png,image/jpeg,image/gif,image/webp"
+          accept="image/png,image/jpeg,image/gif,image/webp,video/mp4,video/webm"
           hidden
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -303,7 +296,7 @@ export function ItemEditor({ releaseId, item, onSaved, onClose }) {
           itemId={item.id}
           images={item.images}
           onSaved={onSaved}
-          label="Add screenshot"
+          label="Add screenshot or video"
         />
       )}
       {error && (

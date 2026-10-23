@@ -15,6 +15,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import OperationalError, connection, transaction
 
 from accounts.models import AppUser, PasswordChangeRequired
+from releases.services.latest import refresh_latest
 
 DEFAULT_ADMIN_USERNAME = "releasemanager"
 DEFAULT_ADMIN_PASSWORD = "releasemanager"
@@ -31,6 +32,7 @@ class Command(BaseCommand):
         self.create_database()
         call_command("migrate", interactive=False, verbosity=0)
         self.stdout.write("Tables are up to date.")
+        refresh_latest()  # Latest = the highest released version number, also for data saved before that rule
         self.create_default_admin()
         if not (settings.BASE_DIR / "frontend" / "dist" / "index.html").exists():
             self.stdout.write(self.style.WARNING(

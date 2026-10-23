@@ -8,7 +8,8 @@ from ..models import ReleaseImage, ReleaseItem, ReleaseVersion
 
 
 def image_json(image: ReleaseImage, url: str | None = None) -> dict:
-    return {"id": image.id, "url": url or image.url, "caption": image.caption}
+    """contentType tells the page to show a video player (video/mp4, video/webm) instead of an image."""
+    return {"id": image.id, "url": url or image.url, "caption": image.caption, "contentType": image.content_type}
 
 
 def release_json(release: ReleaseVersion, image_url=None) -> dict:
@@ -66,3 +67,22 @@ def all_releases_json(image_url=None) -> list[dict]:
 def one_release_json(**lookup) -> dict | None:
     release = releases_queryset().filter(**lookup).first()
     return release_json(release) if release else None
+
+
+def public_release_json(releases: list[dict]) -> list[dict]:
+    """The releases as the public page shows them: no Jira numbers, screenshots from the public image URL."""
+
+    def image(i: dict) -> dict:
+        return {**i, "url": f"/api/public/release-images/{i['id']}"}
+
+    return [
+        {
+            **release,
+            "images": [image(i) for i in release["images"]],
+            "items": [
+                {**{k: v for k, v in item.items() if k != "jiraId"}, "images": [image(i) for i in item["images"]]}
+                for item in release["items"]
+            ],
+        }
+        for release in releases
+    ]

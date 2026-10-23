@@ -1,27 +1,31 @@
 """Release endpoints, same URLs and JSON as python-backend.
 
 Signed in: GET /api/releases, /api/releases/<id>, /api/releases/version/<version>, /api/release-images/<id>
+Public:   GET /api/public/releases, /api/public/releases/version/<version>, /api/public/release-images/<id>, only while
+          PUBLIC_RELEASE_NOTES=true (404 otherwise): the same release notes without Jira numbers, for the public page.
 Admins:   POST /api/admin/releases/parse (read a .docx or .csv, save nothing), POST /api/admin/releases (publish),
           and the edit endpoints below; POST /api/admin/releases/<id>/items/import adds a CSV's changes to a version. Every edit returns the whole updated release.
           GET /api/admin/releases/<id>/notes-file and POST /api/admin/releases/<id>/email: one release's notes as an
           HTML file, downloaded or emailed as an attachment.
 """
 import logging
+import re
 import smtplib
 
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Max
-from django.http import FileResponse, Http404, HttpResponse
+from django.http import FileResponse, Http404, HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import exceptions, serializers, status
-from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from audit import models as audit
 from audit.service import record
 from accounts.authentication import BearerTokenAuthentication
-from config.api import CamelCaseJSONParser, IsAdmin, IsSignedIn, NotFound, bad_request, not_found
+from config.api import CamelCaseJSONParser, IsAdmin, IsSignedIn, NotFound, PublicReadThrottle, bad_request, not_found
 from config.mail import delivery_mode
 from integrations import release_generator
 
@@ -29,7 +33,8 @@ from .models import CATEGORY_ORDER, Category, ReleaseImage, ReleaseItem, Release
 from .services import image_store, release_email
 from .services.csv_parser import CsvParseError, parse_csv
 from .services.docx_parser import MAX_BYTES, DocxParseError, parse_docx
-from .services.release_json import all_releases_json, one_release_json
+from .services.latest import refresh_latest
+from .services.release_json import all_releases_json, one_release_json, public_release_json
 
 log = logging.getLogger(__name__)
 
@@ -78,18 +83,86 @@ def _signed_in(request) -> bool:
         return False
 
 
-def release_image(request, image_id):
-    """Screenshots need a signed-in user, like the release notes they belong to."""
-    if not _signed_in(request):
-        return HttpResponse("Sign in to see this screenshot.", status=401, content_type="text/plain")
+RANGE_PATTERN = re.compile(r"^bytes=(\d*)-(\d*)$")
+
+
+def _byte_range(header: str, size: int) -> tuple[int, int] | None:
+    """(first, last) of a single "Range: bytes=..." header; None when there is none or it can't be served."""
+    match = RANGE_PATTERN.match(header.strip())
+    if not match or match.groups() == ("", ""):
+        return None
+    first, last = match.groups()
+    if first == "":  # bytes=-500: the last 500 bytes
+        return max(size - int(last), 0), size - 1
+    first, last = int(first), min(int(last), size - 1) if last else size - 1
+    return (first, last) if first <= last else None
+
+
+def _file_chunks(path, first: int, length: int, chunk_size: int = 64 * 1024):
+    with open(path, "rb") as f:
+        f.seek(first)
+        while length > 0:
+            data = f.read(min(chunk_size, length))
+            if not data:
+                break
+            length -= len(data)
+            yield data
+
+
+def _image_response(request, image_id, cache_control: str):
+    """The screenshot or video file. Range requests get 206 and that part only: browsers need it to play videos."""
     image = ReleaseImage.objects.filter(pk=image_id).first()
     path = image_store.path_for(image.file_name) if image else None
     if path is None:
         raise Http404("Image not found.")
-    response = FileResponse(open(path, "rb"), content_type=image.content_type)
-    response["Cache-Control"] = "private, max-age=86400"
+    size = path.stat().st_size
+    byte_range = _byte_range(request.headers.get("Range", ""), size) if size else None
+    if byte_range:
+        first, last = byte_range
+        response = StreamingHttpResponse(_file_chunks(path, first, last - first + 1), status=206,
+                                         content_type=image.content_type)
+        response["Content-Range"] = f"bytes {first}-{last}/{size}"
+        response["Content-Length"] = str(last - first + 1)
+    else:
+        response = FileResponse(open(path, "rb"), content_type=image.content_type)
+    response["Accept-Ranges"] = "bytes"
+    response["Cache-Control"] = cache_control
     response["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+def release_image(request, image_id):
+    """Screenshots need a signed-in user, like the release notes they belong to."""
+    if not _signed_in(request):
+        return HttpResponse("Sign in to see this screenshot.", status=401, content_type="text/plain")
+    return _image_response(request, image_id, "private, max-age=86400")
+
+
+# ---- Public: the release notes page anyone can open, while PUBLIC_RELEASE_NOTES=true ----
+
+def _public_or_404() -> None:
+    if not settings.PUBLIC_RELEASE_NOTES:
+        raise Http404("Not found.")
+
+
+@api_view(["GET"])
+@throttle_classes([PublicReadThrottle])
+def public_releases(request):
+    _public_or_404()
+    return Response(public_release_json(all_releases_json()))
+
+
+@api_view(["GET"])
+@throttle_classes([PublicReadThrottle])
+def public_release_by_version(request, version):
+    _public_or_404()
+    return Response(public_release_json([_release_or_404(version=version)])[0])
+
+
+def public_release_image(request, image_id):
+    """Every screenshot belongs to a release, so all of them are as public as the release notes."""
+    _public_or_404()
+    return _image_response(request, image_id, "public, max-age=86400")
 
 
 # ---- Shared helpers ----
@@ -139,12 +212,6 @@ def _valid(serializer_class, request, **kwargs):
     return serializer.validated_data
 
 
-def _set_latest(release: ReleaseVersion, latest: bool) -> None:
-    if latest:
-        ReleaseVersion.objects.exclude(pk=release.pk).update(latest=False)
-    release.latest = latest
-
-
 # ---- Admin: Word document upload ----
 
 class ParsedImageSerializer(serializers.Serializer):
@@ -179,7 +246,6 @@ class PublishSerializer(serializers.Serializer):
     known_issues = serializers.ListField(child=serializers.CharField(allow_blank=True), required=False, default=list, max_length=100)
     upgrade_notes = serializers.ListField(child=serializers.CharField(allow_blank=True), required=False, default=list, max_length=100)
     images = ParsedImageSerializer(many=True, required=False, default=list, max_length=MAX_IMAGES)
-    mark_latest = serializers.BooleanField(default=True)
     items = ParsedItemSerializer(many=True, min_length=1)
     # Drafted from Bitbucket: the version's release branches, which the integration screens are then limited to.
     branches = SourceBranchSerializer(many=True, required=False, default=list, max_length=20)
@@ -265,9 +331,8 @@ def publish(request):
                 _store_images(release, parsed.get("images", []), item, saved_files)
             _store_images(release, body["images"], None, saved_files)
 
-            if body["mark_latest"]:
-                _set_latest(release, True)
             release.save()
+            refresh_latest()
 
             image_count = len(body["images"]) + sum(len(i.get("images", [])) for i in body["items"])
             ReleaseUpload.objects.create(release_version=release, file_name=body["file_name"],
@@ -301,7 +366,6 @@ class ReleaseDetailsSerializer(serializers.Serializer):
     highlights = serializers.ListField(child=serializers.CharField(allow_blank=True), required=False, allow_null=True, max_length=50)
     known_issues = serializers.ListField(child=serializers.CharField(allow_blank=True), required=False, allow_null=True, max_length=100)
     upgrade_notes = serializers.ListField(child=serializers.CharField(allow_blank=True), required=False, allow_null=True, max_length=100)
-    mark_latest = serializers.BooleanField(required=False, allow_null=True)
 
 
 class ItemSerializer(serializers.Serializer):
@@ -316,7 +380,7 @@ class CaptionSerializer(serializers.Serializer):
 
 
 FIELD_NAMES = {"release_date": "date", "planned_label": "planned date", "known_issues": "known issues",
-               "upgrade_notes": "upgrade notes", "mark_latest": "latest flag"}
+               "upgrade_notes": "upgrade notes"}
 
 
 @api_view(["PATCH", "DELETE"])
@@ -341,10 +405,9 @@ def release_detail(request, release_id):
         for field in ("highlights", "known_issues", "upgrade_notes"):
             if field in changed:
                 setattr(release, field, _lines(body[field]))
-        if body.get("mark_latest") is not None:
-            _set_latest(release, body["mark_latest"])
         release.edited_at = timezone.now()
         release.save()
+        refresh_latest()  # a version that becomes "coming soon", or is released, can change which one is latest
         record(request, audit.RELEASE_EDIT, request.user, target=str(release),
                details="edited " + ", ".join(FIELD_NAMES.get(f, f) for f in sorted(changed)))
     return Response(one_release_json(pk=release.pk))
@@ -359,6 +422,7 @@ def _delete_release(request, release):
             record(request, audit.INTEGRATION_SCOPE, request.user, target=str(release),
                    details="removed release branches " + ", ".join(unlinked))
         release.delete()  # items, screenshots (and their files) and upload history go with it
+        refresh_latest()
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -458,7 +522,7 @@ def add_image(request, release_id):
         if item.release_version_id != release.id:
             raise bad_request("That change belongs to another release.")
     try:
-        file_name, content_type = image_store.save_bytes(upload.read(image_store.MAX_IMAGE_BYTES + 1))
+        file_name, content_type = image_store.save_bytes(upload.read(image_store.MAX_UPLOAD_BYTES + 1))
     except image_store.ImageError as exc:
         raise bad_request(str(exc))
     try:

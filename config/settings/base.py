@@ -132,11 +132,12 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "EXCEPTION_HANDLER": "config.api.exception_handler",
     "UNAUTHENTICATED_USER": None,
-    # Per client IP, on the sign-in endpoints only (config/api.py). Counted in the default cache.
+    # Per client IP, on the sign-in and public release notes endpoints only (config/api.py). Counted in the default cache.
     "DEFAULT_THROTTLE_RATES": {
         "login": env("THROTTLE_LOGIN", "10/min"),
         "register": env("THROTTLE_REGISTER", "5/hour"),
         "password_reset": env("THROTTLE_PASSWORD_RESET", "5/hour"),
+        "public_read": env("THROTTLE_PUBLIC", "60/min"),
     },
     # 0 = use the connection's address and ignore X-Forwarded-For (which a client can fake). Behind one
     # proxy (IIS / nginx) set NUM_PROXIES=1 so the real client address is used.
@@ -150,6 +151,8 @@ LOGIN_LOCKOUT_SECONDS = int(env("LOGIN_LOCKOUT_SECONDS", str(15 * 60)))
 # domains (comma-separated); set it empty to allow any domain. Existing accounts are not affected.
 ALLOW_REGISTRATION = env("ALLOW_REGISTRATION", "true").lower() == "true"
 REGISTRATION_EMAIL_DOMAINS = [d.lower().lstrip("@") for d in env_list("REGISTRATION_EMAIL_DOMAINS", "aiintelekt.com")]
+# The public release notes page (/public/release-notes and /api/public/...): off unless PUBLIC_RELEASE_NOTES=true.
+PUBLIC_RELEASE_NOTES = env("PUBLIC_RELEASE_NOTES", "false").lower() == "true"
 # The .docx upload carries screenshots as data: URLs inside JSON.
 DATA_UPLOAD_MAX_MEMORY_SIZE = 60 * 1024 * 1024
 

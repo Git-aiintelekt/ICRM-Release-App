@@ -3,6 +3,7 @@ import AccessGate from './components/AccessGate';
 import AppSidebar from './components/AppSidebar';
 import SiteHeader from './components/SiteHeader';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { PUBLIC_RELEASE_NOTES_PATH } from './lib/navigation';
 import { useLocation } from './lib/router';
 import AuditLogPage from './pages/AuditLogPage';
 import BitbucketPage from './pages/BitbucketPage';
@@ -34,6 +35,9 @@ const SIGNED_OUT_PAGES = ['/login', '/forgot-password', '/reset-password'];
 
 function CurrentPage({ pathname, search }) {
   const { user, checking } = useAuth();
+  if (pathname === PUBLIC_RELEASE_NOTES_PATH) {
+    return <ReleasesPage publicView />;
+  }
   if (checking) {
     return <p className="status-text page">Checking your sign-in…</p>;
   }
@@ -101,11 +105,17 @@ function CurrentPage({ pathname, search }) {
 function Shell({ pathname, search }) {
   const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
+  const publicPage = pathname === PUBLIC_RELEASE_NOTES_PATH;
   return (
     <>
-      <SiteHeader pathname={pathname} menuOpen={menuOpen} onToggleMenu={() => setMenuOpen((open) => !open)} />
+      <SiteHeader
+        pathname={pathname}
+        publicPage={publicPage}
+        menuOpen={menuOpen}
+        onToggleMenu={() => setMenuOpen((open) => !open)}
+      />
       <div className="app-shell">
-        {user && !user.mustChangePassword && (
+        {user && !user.mustChangePassword && !publicPage && (
           <AppSidebar pathname={pathname} open={menuOpen} onClose={() => setMenuOpen(false)} />
         )}
         <main className="site-main">

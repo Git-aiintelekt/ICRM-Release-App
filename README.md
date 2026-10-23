@@ -73,7 +73,8 @@ cd ICRM-Release-App
    yet" until a version is published. Open **Import / Export**, then upload a Word document, or under **Draft from
    Bitbucket** choose a version (one per `release/icrm_release_<version>_<date>` branch, see
    [Jira and Bitbucket](#jira-and-bitbucket-live-data)), click **Draft release notes**, review the changes and
-   warnings, and **Publish**. Publish older versions first, so the newest one ends up marked Latest.
+   warnings, and **Publish**. Versions can be published in any order: the released version with the highest number (10.10.0 > 10.9.0) is
+   always marked Latest, automatically (`releases/services/latest.py`).
 
 ### Every time
 
@@ -166,6 +167,7 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 |---|---|---|
 | `GET /api/releases`, `/api/releases/{id}`, `/api/releases/version/{v}` | `releases.api` | signed in |
 | `GET /api/release-images/{id}` | `releases.api.release_image` | signed in (session cookie or token) |
+| (new) `GET /api/public/releases`, `/api/public/releases/version/{v}`, `/api/public/release-images/{id}` | `releases.api.public_*` | public while `PUBLIC_RELEASE_NOTES=true` (404 otherwise), no Jira numbers, see [Public release notes](#public-release-notes) |
 | `POST /api/auth/register`, `/login`, `/forgot-password`, `/reset-password`; `GET /api/auth/me` | `accounts.api` | public / signed in |
 | (new) `POST /api/auth/change-password` | `accounts.api.change_password` | signed in, audited as `PASSWORD_CHANGE` |
 | (new) `POST /api/auth/logout` | `accounts.api.logout` | ends the Django Admin session too |
@@ -190,7 +192,7 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 | Account lockout | After 5 failed sign-ins to one account (from any IP) its sign-in is refused for 15 minutes, audited as a failed sign-in with "locked". A password reset unlocks it | `LOGIN_LOCKOUT_ATTEMPTS`, `LOGIN_LOCKOUT_SECONDS` |
 | Sign out | **Sign out** ends that device's token at once (`revoked_token`). **Sign out everywhere** (header) ends every device's (`user_token_cutoff`), audited as `LOGOUT_EVERYWHERE` | |
 | Password change, disabled account | A password change (reset link, Django Admin, `changepassword`) and disabling an account end every earlier sign-in | |
-| Sign-in first | Every page opens on the sign-in form until the user has signed in; the release notes and screenshots need a signed-in user on the server too. The release manager (FULLADMIN) sees every page and lands on the Dashboard; any other user sees only Release Notes, unless an admin grants Jira access (Settings → Users) | |
+| Sign-in first | Every page opens on the sign-in form until the user has signed in; the release notes and screenshots need a signed-in user on the server too. The one exception is the [public release notes page](#public-release-notes), when it is switched on. The release manager (FULLADMIN) sees every page and lands on the Dashboard; any other user sees only Release Notes, unless an admin grants Jira access (Settings → Users) | |
 | Default admin | `manage.py setup` creates `releasemanager` / `releasemanager` only when there are no users. Until its password is changed the API answers 403 to everything except `/api/auth/me`, `/change-password` and the sign-outs, and Django Admin refuses the account (`password_change_required`) | |
 | Self sign-up | Limited to `@aiintelekt.com` addresses by default; can be switched off (the sign-in page then says to ask an administrator) | `ALLOW_REGISTRATION`, `REGISTRATION_EMAIL_DOMAINS` (empty = any domain) |
 | Content Security Policy | Report-only: browsers log what it would block in the developer console. Before enforcing it, move the inline theme script in `frontend/index.html` into a file | `CSP_ENFORCE=true` |
@@ -199,6 +201,40 @@ The same URLs and JSON as python-backend, so the React app didn't change (`confi
 The lockout and the rate limits are kept in the in-process cache: restarting Django clears them, and they assume one
 waitress process (move the cache to Redis before running several). Tokens issued by python-backend still work here
 until the user's next password change or "Sign out everywhere"; signing out of python-backend doesn't end them.
+
+## Public release notes
+
+A read-only release notes page anyone can open without signing in, to share with customers:
+**`<APP_BASE_URL>/public/release-notes`** (one version: add its anchor, e.g. `/public/release-notes#icrm-v1090`, the
+same as the version links on the page). It is **switched off by default**.
+
+- **Switch on:** set `PUBLIC_RELEASE_NOTES=true` in `.env` and restart Django. Off, the page and `/api/public/...`
+  answer 404 and nothing else changes.
+- **What it shows:** every version with its changes, highlights, known issues, upgrade notes and screenshots, the
+  same as the signed-in Release Notes page, **without Jira numbers** (they are left out on the server, not only
+  hidden), without edit buttons and without the navigation. Upcoming versions are shown, marked "Coming soon".
+- **Sharing:** while it is on, the release manager's Release Notes page has a **Copy public link** button.
+- **Limits:** `/api/public/releases...` is rate-limited per client IP (`THROTTLE_PUBLIC`, default `60/min`; behind
+  IIS / nginx set `NUM_PROXIES=1`). Screenshots are served with `Cache-Control: public`.
+- **Reaching it from outside** (infrastructure): the server must have a public https address in `ALLOWED_HOSTS`,
+  `CSRF_TRUSTED_ORIGINS` and `APP_BASE_URL` (see [Environments](#environments)). To publish only this page, let the
+  proxy pass `/public/`, `/assets/`, `/favicon.ico` and `/api/public/` from the internet and keep the rest internal.
+
+## Screenshots and videos
+
+On the Release Notes page, **Edit release → Add screenshot or video** (one change) or **Add to gallery** (the whole
+version) uploads a file, checked from its bytes, not its name:
+
+| Kind | Formats | Largest | Shown as |
+|---|---|---|---|
+| Screenshot | PNG, JPEG, GIF (animated too), WebP | 5 MB | the picture, linked to its full size |
+| Video | MP4, WebM | 25 MB | a muted, looping player that plays while it is on screen, with controls (pause, seek, full screen) |
+
+A 30-second screen recording is usually 1 to 5 MB as MP4, often over 10 MB as a GIF, so record videos as MP4
+(e.g. Windows Snipping Tool → Record, or OBS). Videos can't come from a Word document; Django Admin takes screenshots
+only. Videos are served with byte ranges (`Range` → 206), which browsers need to play and seek them. Behind IIS,
+the default request limit (30 MB, `maxAllowedContentLength`) is enough for 25 MB; behind nginx raise
+`client_max_body_size` (default 1 MB) to `26m`.
 
 ## Jira and Bitbucket (live data)
 

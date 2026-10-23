@@ -631,6 +631,10 @@ Secrets live only in `.env`, which is git-ignored.
 
 ## Environments and deployment
 
+**Step-by-step staging guide:** [`docs/STAGING_DEPLOYMENT.md`](docs/STAGING_DEPLOYMENT.md) (server requirements, `.env`,
+database, waitress service, IIS / nginx, first sign-in, checks, updates and rollback). Claude Code follows it, with the
+rules in [`CLAUDE.md`](CLAUDE.md).
+
 | | Development | Staging / production |
 |---|---|---|
 | Settings | `config.settings.dev` (default in `manage.py`) | `config.settings.prod` (default in `config/wsgi.py`) |
